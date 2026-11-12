@@ -1,3 +1,4 @@
+import { firstVisibleWindow } from './desktop-test-utils.mjs';
 import { _electron as electron, expect } from '@playwright/test';
 import { mkdtemp, mkdir, writeFile, readFile, rm, utimes, readdir } from 'node:fs/promises';
 import path from 'node:path';
@@ -16,7 +17,7 @@ const launch = () =>
   );
 try {
   app = await launch();
-  let page = await app.firstWindow();
+  let page = await firstVisibleWindow(app);
   await page.waitForSelector('h1');
   const id = await page.evaluate(() =>
     window.kjmcl.createInstance({ name: '建筑测试', version: '1.21.1', loader: 'fabric' }),
@@ -65,7 +66,7 @@ try {
   ];
   await writeFile(file, JSON.stringify(state));
   app = await launch();
-  page = await app.firstWindow();
+  page = await firstVisibleWindow(app);
   const errors = [];
   page.on('pageerror', (e) => errors.push(e.message));
   await page.waitForSelector('h1');
@@ -146,7 +147,7 @@ try {
   expect(errors).toEqual([]);
   await app.close();
   app = await launch();
-  page = await app.firstWindow();
+  page = await firstVisibleWindow(app);
   await page.waitForSelector('h1');
   const persisted = await page.evaluate(() => window.kjmcl.snapshot());
   expect(persisted.instances.find((i) => i.id === id).organization).toMatchObject({

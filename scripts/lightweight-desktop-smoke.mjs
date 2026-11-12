@@ -1,3 +1,4 @@
+import { firstVisibleWindow } from './desktop-test-utils.mjs';
 import { _electron as electron, expect } from '@playwright/test';
 import { mkdtemp, mkdir, writeFile, readFile, rm } from 'node:fs/promises';
 import os from 'node:os';
@@ -51,7 +52,7 @@ async function metrics(page) {
 }
 try {
   app = await electron.launch(options);
-  let page = await app.firstWindow();
+  let page = await firstVisibleWindow(app);
   await page.waitForSelector('h1');
   await page.evaluate(() => window.kjmcl.addOffline('LightTester'));
   const ids = [];
@@ -117,7 +118,7 @@ public class LightSmoke {
   await writeFile(stateFile, JSON.stringify(state));
   app = await electron.launch(options);
   app.on('window', (p) => p.on('pageerror', (e) => errors.push(e.message)));
-  page = await app.firstWindow();
+  page = await firstVisibleWindow(app);
   await page.waitForSelector('h1');
   page.on('pageerror', (e) => errors.push(e.message));
   const originalPid = await app.evaluate(({ BrowserWindow }) =>

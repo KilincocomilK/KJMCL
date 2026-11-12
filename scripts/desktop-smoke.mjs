@@ -1,3 +1,4 @@
+import { firstVisibleWindow } from './desktop-test-utils.mjs';
 import { _electron as electron, expect } from '@playwright/test';
 import { mkdtemp, mkdir, writeFile, readFile, rm, readdir } from 'node:fs/promises';
 import os from 'node:os';
@@ -18,7 +19,7 @@ const launchOptions = process.env.KJMCL_EXECUTABLE
 let app;
 try {
   app = await electron.launch(launchOptions);
-  const page = await app.firstWindow();
+  const page = await firstVisibleWindow(app);
   await page.waitForSelector('h1');
   const errors = [];
   page.on('pageerror', (e) => errors.push(e.message));
@@ -269,7 +270,7 @@ try {
     );
     await writeFile(path.join(root, 'state.json'), JSON.stringify(saved));
     app = await electron.launch(launchOptions);
-    const second = await app.firstWindow();
+    const second = await firstVisibleWindow(app);
     await second.waitForSelector('h1');
     await second.getByRole('button', { name: '性能与诊断', exact: true }).click();
     await second.getByLabel('内存分配', { exact: true }).selectOption('auto');
@@ -396,7 +397,7 @@ try {
     }, id);
     await app.close();
     app = await electron.launch(launchOptions);
-    const third = await app.firstWindow();
+    const third = await firstVisibleWindow(app);
     await third.waitForSelector('h1');
     const persisted = await third.evaluate((id) => window.kjmcl.sessions(id), id);
     expect(persisted[0].status).toBe('failed');

@@ -1,3 +1,4 @@
+import { firstVisibleWindow } from './desktop-test-utils.mjs';
 import { _electron as electron, expect } from '@playwright/test';
 import { mkdtemp, mkdir, writeFile, readFile, rm } from 'node:fs/promises';
 import os from 'node:os';
@@ -14,7 +15,7 @@ try {
       ? { executablePath: process.env.KJMCL_EXECUTABLE, args: [], env }
       : { args: ['.'], env },
   );
-  const page = await app.firstWindow();
+  const page = await firstVisibleWindow(app);
   await page.waitForSelector('h1');
   const errors = [];
   page.on('pageerror', (e) => errors.push(e.message));

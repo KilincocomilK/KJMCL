@@ -44,11 +44,9 @@ jobs:
       - name: Desktop integration (Linux)
         if: runner.os == 'Linux'
         run: |
-          xvfb-run --auto-servernum node scripts/desktop-smoke.mjs
-          xvfb-run --auto-servernum node scripts/resource-desktop-smoke.mjs
-          xvfb-run --auto-servernum node scripts/save-desktop-smoke.mjs
-          xvfb-run --auto-servernum node scripts/library-desktop-smoke.mjs
-          xvfb-run --auto-servernum node scripts/lightweight-desktop-smoke.mjs
+          sudo apt-get update
+          sudo apt-get install --yes --no-install-recommends openbox x11-utils
+          xvfb-run --auto-servernum --server-args='-screen 0 1920x1080x24' bash scripts/ci-desktop-linux.sh
       - name: Storage integration with Windows safeStorage
         if: runner.os == 'Windows'
         run: node scripts/storage-smoke.mjs

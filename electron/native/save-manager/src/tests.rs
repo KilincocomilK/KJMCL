@@ -28,7 +28,12 @@ fn region_file(path: &Path, entries: &[(usize, Value)]) {
     fs::write(path, bytes).unwrap();
 }
 fn fixture() -> tempfile::TempDir {
-    let dir = tempfile::tempdir().unwrap();
+    // macOS exposes its temporary directory through /var -> /private/var.
+    // Match Store's canonical root without relaxing the engine's link checks.
+    let base = std::env::temp_dir();
+    #[cfg(unix)]
+    let base = fs::canonicalize(base).unwrap();
+    let dir = tempfile::tempdir_in(base).unwrap();
     fs::write(dir.path().join("level.dat"),gzip(&nbt!({"Data":{"LevelName":"世界 🟧","DataVersion":3955i32,"Version":{"Name":"1.21.1"},"WorldGenSettings":{"seed":9007199254740993i64},"GameType":0i32,"Difficulty":2i8,"hardcore":0i8,"allowCommands":0i8,"SpawnX":0i32,"SpawnY":64i32,"SpawnZ":0i32,"GameRules":{"keepInventory":"false"},"UnknownCustom":{"keep":123i64}}}))).unwrap();
     for kind in ["region", "entities", "poi"] {
         region_file(
@@ -40,6 +45,18 @@ fn fixture() -> tempfile::TempDir {
 }
 fn request() -> serde_json::Value {
     json!({"dimension":"overworld","rx":0,"rz":0,"indices":[0,1,1023],"protectSpawn":0})
+}
+#[test]
+#[cfg(unix)]
+fn linked_world_paths_are_rejected() {
+    let d = fixture();
+    let target = d.path().join("region");
+    let link = d.path().join("linked-region");
+    std::os::unix::fs::symlink(&target, &link).unwrap();
+    assert!(safety::check_absolute(&link).is_err());
+    assert!(safety::join(d.path(), "linked-region/r.0.0.mca").is_err());
+    assert!(safety::atomic(&link.join("new.mca"), b"blocked").is_err());
+    assert!(!target.join("new.mca").exists());
 }
 #[test]
 fn metadata_preserves_large_seed_and_unicode() {
