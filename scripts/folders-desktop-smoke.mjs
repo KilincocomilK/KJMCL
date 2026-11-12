@@ -4,6 +4,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { execFileSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
+import AdmZip from 'adm-zip';
 import { firstVisibleWindow } from './desktop-test-utils.mjs';
 import { levelFixture } from './save-fixtures.mjs';
 const temp = await mkdtemp(path.join(os.tmpdir(), 'kjmcl-folders-desktop-'));
@@ -58,13 +59,14 @@ public class FolderFixture {
   );
   execFileSync('javac', ['--release', '17', javaFile], { windowsHide: true });
   const client = path.join(source, 'versions', sharedVersion, sharedVersion + '.jar');
-  execFileSync('jar', ['--create', '--file', client, '-C', base, 'FolderFixture.class'], {
-    windowsHide: true,
-  });
+  // The JDK jar CLI uses the Windows code page for paths. Package the compiled class
+  // directly so English CI runners still exercise Chinese game and classpath locations.
+  const fixtureJar = new AdmZip();
+  fixtureJar.addFile('FolderFixture.class', await readFile(path.join(base, 'FolderFixture.class')));
+  const jarBytes = fixtureJar.toBuffer();
+  await writeFile(client, jarBytes);
   const library = path.join(source, 'libraries', 'fixture', 'support.jar');
-  execFileSync('jar', ['--create', '--file', library, '-C', base, 'FolderFixture.class'], {
-    windowsHide: true,
-  });
+  await writeFile(library, jarBytes);
   await writeFile(
     path.join(source, 'versions', sharedVersion, sharedVersion + '.json'),
     JSON.stringify({
