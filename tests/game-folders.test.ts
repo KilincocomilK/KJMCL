@@ -73,6 +73,7 @@ it('indexes shared and isolated versions without any source writes, copying, or 
   await version('隔离');
   await version('配置优先');
   await version('新版 HMCL');
+  await version('未启用的 HMCL 覆盖');
   await mkdir(path.join(source, 'versions/隔离/saves'), { recursive: true });
   await mkdir(path.join(source, 'versions/配置优先/mods'), { recursive: true });
   await atomicJson(path.join(source, 'versions/配置优先/hmclversion.cfg'), { gameDirType: 0 });
@@ -80,11 +81,15 @@ it('indexes shared and isolated versions without any source writes, copying, or 
     path.join(source, 'versions/新版 HMCL/.hmcl/config/instance-game-settings.json'),
     { overrideProperties: ['runningDirectory'], runningDirectory: '' },
   );
+  await atomicJson(
+    path.join(source, 'versions/未启用的 HMCL 覆盖/.hmcl/config/instance-game-settings.json'),
+    { overrideProperties: [], runningDirectory: path.join(source, 'missing-unused-directory') },
+  );
   const before = await digestTree(source),
     folderId = await add();
   expect(store.data.gameFolders).toHaveLength(1);
-  expect(store.data.instances).toHaveLength(4);
-  for (const name of ['共享', '配置优先'])
+  expect(store.data.instances).toHaveLength(5);
+  for (const name of ['共享', '配置优先', '未启用的 HMCL 覆盖'])
     expect(store.data.instances.find((i) => i.external?.versionId === name)?.gameDir).toBe(source);
   for (const name of ['隔离', '新版 HMCL'])
     expect(store.data.instances.find((i) => i.external?.versionId === name)?.gameDir).toBe(

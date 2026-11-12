@@ -147,7 +147,8 @@ export class GameFolders {
     let selected = layout === 'version' ? isolated : root;
     if (layout === 'auto') {
       const modern = path.join(isolated, '.hmcl', 'config', 'instance-game-settings.json');
-      const config = (await exists(modern)) ? modern : path.join(isolated, 'hmclversion.cfg');
+      const hasModern = await exists(modern);
+      const config = hasModern ? modern : path.join(isolated, 'hmclversion.cfg');
       if (await exists(path.join(isolated, 'modpack.cfg'))) selected = isolated;
       else if (await exists(config)) {
         const v = await readConfig<{
@@ -156,13 +157,15 @@ export class GameFolders {
           runningDirectory?: string;
           overrideProperties?: string[];
         }>(config);
-        if (
-          v.gameDirType === 1 ||
-          (v.overrideProperties?.includes('runningDirectory') && !v.runningDirectory)
-        )
-          selected = isolated;
+        if (hasModern) {
+          // HMCL keeps dormant per-instance values when this setting inherits its preset.
+          if (v.overrideProperties?.includes('runningDirectory'))
+            selected = v.runningDirectory?.trim()
+              ? path.resolve(root, v.runningDirectory)
+              : isolated;
+          else selected = await this.detectDirectory(root, isolated);
+        } else if (v.gameDirType === 1) selected = isolated;
         else if (v.gameDirType === 2 && v.gameDir) selected = path.resolve(root, v.gameDir);
-        else if (v.runningDirectory) selected = path.resolve(root, v.runningDirectory);
         else if (v.gameDirType !== 0) selected = await this.detectDirectory(root, isolated);
       } else selected = await this.detectDirectory(root, isolated);
     }
