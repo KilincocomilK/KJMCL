@@ -4,13 +4,23 @@ import type { CrashFile, CrashReport, Snapshot } from '../../shared/types';
 import { api } from '../api';
 import { Empty, InstanceSelect } from '../components';
 import { type Run, size } from '../ui';
-export function CrashesPage({ state, run }: { state: Snapshot; run: Run }) {
+export function CrashesPage({
+  state,
+  run,
+  showInstanceSelect = true,
+}: {
+  state: Snapshot;
+  run: Run;
+  showInstanceSelect?: boolean;
+}) {
   const id = state.selectedInstanceId ?? '';
   return (
     <>
-      <div className="toolbar">
-        <InstanceSelect state={state} run={run} />
-      </div>
+      {showInstanceSelect && (
+        <div className="toolbar">
+          <InstanceSelect state={state} run={run} />
+        </div>
+      )}
       {id ? <CrashContent key={id} id={id} run={run} /> : <Empty title="选择一个游戏实例" />}
     </>
   );

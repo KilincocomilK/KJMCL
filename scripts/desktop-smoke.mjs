@@ -1,4 +1,4 @@
-import { firstVisibleWindow } from './desktop-test-utils.mjs';
+import { firstVisibleWindow, navigateWorkspace } from './desktop-test-utils.mjs';
 import { _electron as electron, expect } from '@playwright/test';
 import { mkdtemp, mkdir, writeFile, readFile, rm, readdir } from 'node:fs/promises';
 import os from 'node:os';
@@ -26,7 +26,7 @@ try {
   await expect(page.getByRole('heading', { name: '开始游戏', exact: true })).toBeVisible();
   await mkdir('.local', { recursive: true });
   await page.screenshot({ path: '.local/home-empty.png' });
-  await page.getByRole('button', { name: '账户', exact: true }).click();
+  await navigateWorkspace(page, '账户');
   await page.getByPlaceholder('Player', { exact: true }).fill('KJMC_Tester');
   await page.getByRole('button', { name: '添加账户', exact: true }).click();
   await expect(page.getByRole('heading', { name: 'KJMC_Tester' })).toBeVisible();
@@ -63,7 +63,7 @@ try {
   let dir = path.join(root, 'instances', id);
   await mkdir(path.join(dir, 'mods'), { recursive: true });
   await writeFile(path.join(dir, 'mods', 'sample mod.jar'), 'fixture');
-  await page.getByRole('button', { name: '模组中心', exact: true }).click();
+  await navigateWorkspace(page, '模组中心');
   await expect(page.getByText('sample mod', { exact: true })).toBeVisible();
   await page.getByRole('switch').click();
   await expect(page.getByRole('switch')).toHaveAttribute('aria-checked', 'false');
@@ -72,7 +72,7 @@ try {
   await expect(page.getByPlaceholder('在 CurseForge 搜索模组')).toBeVisible();
   await mkdir(path.join(dir, 'saves/Smoke World'), { recursive: true });
   await writeFile(path.join(dir, 'saves/Smoke World/level.dat'), 'world fixture');
-  await page.getByRole('button', { name: '存档备份', exact: true }).click();
+  await navigateWorkspace(page, '存档备份');
   await expect(page.getByText('Smoke World', { exact: true })).toBeVisible();
   await page.getByRole('button', { name: '备份', exact: true }).click();
   await expect(page.getByRole('button', { name: '恢复', exact: true })).toBeVisible();
@@ -126,7 +126,7 @@ try {
   expect(await readFile(path.join(dir, 'saves/Smoke World/level.dat'), 'utf8')).toBe(
     'world fixture',
   );
-  await page.getByRole('button', { name: '账户', exact: true }).click();
+  await navigateWorkspace(page, '账户');
   await expect(page.getByRole('heading', { name: '第三方账户', exact: true })).toBeVisible();
   await page.getByRole('button', { name: '管理皮肤', exact: true }).click();
   await expect(page.getByRole('dialog', { name: 'KJMC_Tester · 皮肤' })).toBeVisible();
@@ -174,20 +174,21 @@ try {
     dialog.showOpenDialog = async () => ({ canceled: false, filePaths: [source] });
   }, source);
   await page.getByRole('button', { name: '游戏实例', exact: true }).click();
-  await page.getByRole('button', { name: '导入目录', exact: true }).click();
-  await expect(page.getByRole('dialog', { name: '导入游戏目录' })).toBeVisible();
-  await page.getByLabel('实例名称', { exact: true }).fill('Imported Game');
-  await page.getByRole('button', { name: '复制导入', exact: true }).click();
+  await page.getByRole('button', { name: '添加游戏文件夹', exact: true }).click();
+  await expect(page.getByRole('dialog', { name: '添加游戏文件夹' })).toBeVisible();
+  await page.getByLabel('文件夹名称', { exact: true }).fill('Imported Game');
+  await page.getByRole('button', { name: '添加文件夹', exact: true }).click();
   await expect
     .poll(async () =>
       page.evaluate(
         async () =>
-          (await window.kjmcl.snapshot()).instances.find((i) => i.name === 'Imported Game')?.status,
+          (await window.kjmcl.snapshot()).instances.find((i) => i.external?.versionId === '1.21.1')
+            ?.status,
       ),
     )
     .toBe('ready');
   const imported = await page.evaluate(async () =>
-    (await window.kjmcl.snapshot()).instances.find((i) => i.name === 'Imported Game'),
+    (await window.kjmcl.snapshot()).instances.find((i) => i.external?.versionId === '1.21.1'),
   );
   expect(await readFile(path.join(imported.gameDir, 'config/game.toml'), 'utf8')).toBe(
     'import=true',
@@ -220,7 +221,7 @@ try {
   await app.evaluate(({ dialog }) => {
     dialog.showSaveDialog = globalThis.originalSaveDialog;
   });
-  await page.getByRole('button', { name: '游戏日志', exact: true }).click();
+  await navigateWorkspace(page, '游戏日志');
   await expect(page.locator('.console')).toBeVisible();
   const java = await page.evaluate(() => window.kjmcl.java());
   await app.close();
@@ -272,7 +273,7 @@ try {
     app = await electron.launch(launchOptions);
     const second = await firstVisibleWindow(app);
     await second.waitForSelector('h1');
-    await second.getByRole('button', { name: '性能与诊断', exact: true }).click();
+    await navigateWorkspace(second, '性能与诊断');
     await second.getByLabel('内存分配', { exact: true }).selectOption('auto');
     await second.getByLabel('堆内存上限', { exact: true }).fill('1024');
     await second.getByLabel('垃圾收集器', { exact: true }).selectOption('g1');
@@ -356,7 +357,7 @@ try {
         second.evaluate(async (id) => (await window.kjmcl.sessions(id))[0]?.status, id),
       )
       .toBe('stopped');
-    await second.getByRole('button', { name: '性能与诊断', exact: true }).click();
+    await navigateWorkspace(second, '性能与诊断');
     await second.locator('.session-record summary').first().click();
     await second.screenshot({ path: '.local/diagnostics-v3.png' });
     const diagnosisExport = path.join(root, 'exported-diagnosis.json');

@@ -1,0 +1,82 @@
+/* Consolidated workspaces: rectangular black/orange tabs, one instance selector per domain. */
+.workspace {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+  min-width: 0;
+}
+.workspace-bar {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 22px;
+  border-bottom: 1px solid var(--line);
+}
+.workspace-tabs {
+  display: flex;
+  align-items: stretch;
+  gap: 26px;
+  min-width: 0;
+  overflow-x: auto;
+  scrollbar-width: thin;
+}
+.workspace-tabs button {
+  position: relative;
+  border: 0;
+  border-bottom: 2px solid transparent;
+  background: transparent;
+  color: #8d9587;
+  padding: 0 0 13px;
+  font-size: 13px;
+  white-space: nowrap;
+}
+.workspace-tabs button:hover {
+  border-color: transparent;
+  border-bottom-color: #ffffff2b;
+  background: transparent;
+  color: #e9ecdf;
+}
+.workspace-tabs button[aria-selected='true'] {
+  color: #e9ecdf;
+  border-bottom-color: var(--orange);
+}
+.workspace-tabs button:focus-visible {
+  outline: 1px solid var(--orange);
+  outline-offset: 2px;
+}
+.workspace-instance {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex: none;
+  padding-bottom: 8px;
+  color: #74736f;
+  font-size: 11px;
+  letter-spacing: 0.5px;
+  white-space: nowrap;
+}
+.workspace-instance > span {
+  flex-shrink: 0;
+}
+.workspace-instance .instance-select {
+  min-width: 190px;
+  max-width: 280px;
+}
+.workspace-panel {
+  min-width: 0;
+}
+@media (max-width: 860px) {
+  .workspace-bar {
+    align-items: stretch;
+    flex-direction: column;
+    gap: 10px;
+    padding-bottom: 10px;
+  }
+  .workspace-tabs {
+    border-bottom: 1px solid var(--line);
+  }
+  .workspace-instance {
+    justify-content: flex-end;
+    padding-bottom: 0;
+  }
+}

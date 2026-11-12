@@ -1,7 +1,16 @@
 import { it, expect, afterEach, vi } from 'vitest';
 import path from 'node:path';
 import os from 'node:os';
-import { mkdtemp, mkdir, writeFile, readFile, rm, readdir, symlink } from 'node:fs/promises';
+import {
+  mkdtemp,
+  mkdir,
+  writeFile,
+  readFile,
+  rm,
+  readdir,
+  symlink,
+  realpath,
+} from 'node:fs/promises';
 import { createHash } from 'node:crypto';
 import AdmZip from 'adm-zip';
 import { Store } from '../electron/core/store';
@@ -82,7 +91,7 @@ it('migrates v1 without losing directories or the original backup', async () => 
   delete v1.instances[0].gameDir;
   await atomicJson(path.join(store.root, 'state.json'), v1);
   const migrated = new Store(store.root);
-  expect(migrated.data.schemaVersion).toBe(4);
+  expect(migrated.data.schemaVersion).toBe(5);
   expect(migrated.dir('source')).toBe(path.join(store.root, 'instances/source'));
   expect(
     JSON.parse(await readFile(path.join(store.root, 'state.json.v1.bak'), 'utf8')).schemaVersion,
@@ -152,10 +161,9 @@ it('backs up and restores to a new world without overwriting a current world', a
   expect(await exists(path.join(i.gameDir!, 'saves', restored.name, 'session.lock'))).toBe(false);
   expect(await backups.list('a')).toHaveLength(1);
 });
-it('imports a flattened existing version and local assets without changing the source', async () => {
-  const { root, store, ctx, add } = await fixture();
-  const i = add('target'),
-    source = path.join(root, 'old-minecraft');
+it('indexes all versions in place and resolves inherited clients from the source', async () => {
+  const { root, store, net } = await fixture();
+  const source = path.join(root, 'old-minecraft');
   await mkdir(path.join(source, 'versions/base'), { recursive: true });
   await mkdir(path.join(source, 'versions/中文 Fabric'));
   await mkdir(path.join(source, 'libraries'));
@@ -177,14 +185,27 @@ it('imports a flattened existing version and local assets without changing the s
     libraries: [],
   });
   await writeFile(path.join(source, 'saves/world/level.dat'), 'original');
-  const service = new Instances(store),
+  const service = new Instances(store).folders,
     scan = await service.scan(source);
-  await service.import(scan.selectionId, '中文 Fabric', 'target', ctx);
+  const folderId = await service.add({
+    selectionId: scan.selectionId,
+    name: '外部游戏',
+    layouts: [],
+  });
+  const i = store.data.instances.find((i) => i.external?.versionId === '中文 Fabric')!;
+  expect(store.data.instances).toHaveLength(2);
+  expect(i.external?.folderId).toBe(folderId);
   expect(i.status).toBe('ready');
   expect(i.version).toBe('1.21.1');
   expect(i.loader).toBe('fabric');
-  expect(i.localRuntime).toBe(true);
-  expect(await readFile(path.join(i.gameDir!, 'client.jar'), 'utf8')).toBe('client');
+  const original = await realpath(source);
+  expect(store.runtime(i.id)).toBe(original);
+  expect(i.gameDir).toBe(original);
+  expect((await new Minecraft(store, net).resolved(i.id)).client).toBe(
+    path.join(original, 'versions/base/base.jar'),
+  );
+  expect(await exists(path.join(store.root, 'instances', i.id))).toBe(false);
+  expect(await exists(path.join(source, '.kjmcl-owner.json'))).toBe(false);
   expect(await readFile(path.join(source, 'saves/world/level.dat'), 'utf8')).toBe('original');
 });
 it('resolves Forge and NeoForge Maven metadata without confusing Minecraft versions', async () => {

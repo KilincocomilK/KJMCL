@@ -4,7 +4,8 @@ import os from 'node:os';
 import { mkdir, copyFile, rm } from 'node:fs/promises';
 import { Network, pool } from './network';
 import { Store } from './store';
-import { atomicJson, json, inside, extractZip } from './files';
+import { atomicJson, json, inside, extractZip, hashFile } from './files';
+import { assertExternal, checkGamePath, resolveExternalVersion } from './game-folders';
 import type { Work } from './tasks';
 import type { Loader, VersionSummary } from '../../shared/types';
 export interface Rule {
@@ -140,11 +141,37 @@ export class Minecraft {
   profile(id: string) {
     return path.join(this.store.dir(id), 'version.json');
   }
+  async resolved(id: string) {
+    const i = this.store.instance(id);
+    if (i.external) {
+      await assertExternal(this.store, id);
+      return resolveExternalVersion(this.store.runtime(id), i.external.versionId);
+    }
+    return {
+      version: await json<Version>(this.profile(id)),
+      client: path.join(this.store.dir(id), 'client.jar'),
+    };
+  }
+  async prepareNatives(id: string, version: Version) {
+    if (!this.store.instance(id).external) return path.join(this.store.dir(id), 'natives');
+    const dest = inside(path.join(this.store.root, 'cache', 'external-natives'), id);
+    await checkGamePath(dest, true);
+    await rm(dest, { recursive: true, force: true });
+    await mkdir(dest, { recursive: true });
+    for (const f of this.libraryFiles(version, id).filter((f) => f.native)) {
+      await checkGamePath(f.dest);
+      if (f.artifact.sha1 && (await hashFile(f.dest)) !== f.artifact.sha1)
+        throw new Error('原生库校验失败，请在原启动器修复');
+      await extractZip(f.dest, dest, (p) => !f.exclude.some((e) => p.startsWith(e)));
+    }
+    return dest;
+  }
   async ensureLogging(id: string, version: Version, signal: AbortSignal) {
     const logging = version.logging?.client;
     if (!logging) return undefined;
     const f = logging.file;
     const dest = inside(path.join(this.store.runtime(id), 'assets', 'log_configs'), f.id);
+    if (this.store.instance(id).external) await checkGamePath(dest, true);
     try {
       await this.net.download(f.url, dest, { signal, hash: f.sha1, size: f.size });
     } catch (error) {
@@ -213,6 +240,7 @@ export class Minecraft {
   }
   async install(id: string, ctx: Work) {
     const i = this.store.instance(id);
+    if (i.external) throw new Error('外部版本请在原启动器安装或修复，然后刷新游戏文件夹');
     i.status = 'installing';
     delete i.error;
     this.store.save();

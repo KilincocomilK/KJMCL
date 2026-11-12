@@ -1,4 +1,4 @@
-import { firstVisibleWindow } from './desktop-test-utils.mjs';
+import { firstVisibleWindow, navigateWorkspace } from './desktop-test-utils.mjs';
 import { _electron as electron, expect } from '@playwright/test';
 import { mkdtemp, mkdir, writeFile, readFile, rm, utimes, readdir } from 'node:fs/promises';
 import path from 'node:path';
@@ -83,7 +83,7 @@ try {
   await mkdir('.local', { recursive: true });
   await page.screenshot({ path: '.local/library-v060.png' });
   await expect(page.getByRole('button', { name: '生存测试', exact: true })).toHaveCount(0);
-  await page.getByRole('button', { name: '内容中心', exact: true }).click();
+  await navigateWorkspace(page, '内容中心');
   await page.getByRole('button', { name: /收藏夹/ }).click();
   await expect(page.getByRole('heading', { name: '测试资源收藏', exact: true })).toBeVisible();
   await page.getByLabel('测试资源收藏 收藏分组').fill('常用');
@@ -92,7 +92,7 @@ try {
     .poll(async () => JSON.parse(await readFile(file, 'utf8')).favorites[0].group)
     .toBe('常用');
   await page.screenshot({ path: '.local/catalog-v060.png' });
-  await page.getByRole('button', { name: '模组中心', exact: true }).click();
+  await navigateWorkspace(page, '模组中心');
   await page.getByRole('button', { name: '检查与批量操作', exact: true }).click();
   await expect(page.getByText('重复模组 ID：duplicate', { exact: true })).toHaveCount(2);
   await page.getByRole('button', { name: '选择筛选结果', exact: true }).click();
@@ -102,7 +102,7 @@ try {
   await expect
     .poll(() => readdir(path.join(game, 'mods')))
     .toEqual(['a.jar.disabled', 'b.jar.disabled']);
-  await page.getByRole('button', { name: '崩溃报告', exact: true }).click();
+  await navigateWorkspace(page, '崩溃报告');
   await page.getByRole('button', { name: /crash-ui.txt/ }).click();
   await expect(page.getByRole('heading', { name: 'Java 堆内存不足', exact: true })).toBeVisible();
   await expect(page.locator('.crash-text')).not.toContainText('ui-secret-token');
@@ -125,7 +125,7 @@ try {
     .toBe(3);
   await mkdir('.local', { recursive: true });
   await page.screenshot({ path: '.local/crashes-v060.png' });
-  await page.getByRole('button', { name: '磁盘管理', exact: true }).click();
+  await navigateWorkspace(page, '磁盘管理');
   await page.getByRole('button', { name: '分析磁盘占用', exact: true }).click();
   await expect(page.getByRole('heading', { name: /已统计/ })).toBeVisible();
   await page.screenshot({ path: '.local/disk-usage-v060.png' });

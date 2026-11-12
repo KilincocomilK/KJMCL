@@ -28,7 +28,7 @@ v3 新增实例性能选项，从 v1/v2 迁移时保留对应版本原始备份�
 ## 新增领域服务
 
 - `forge.ts`：官方 Maven 元数据、安装器校验、无 shell Java 子进程、隔离安装 staging、生成配置合并。`Minecraft` 保留统一安装状态机。
-- `instances.ts`：实例目录声明、复制克隆、迁移、源版本继承解析、游戏目录复制导入、存档备份索引。`archives.ts` 通过 yazl / yauzl 流式读写存档；校验在恢复之前完成，恢复目标必须为新目录。
+- `instances.ts`：受管实例目录声明、复制克隆、迁移与存档备份索引。`game-folders.ts`：外部文件夹只做索引、运行目录识别、原版本继承解析、刷新和解除索引；外部实例不声明目录所有权，不允许搬移或受管安装。`archives.ts` 通过 yazl / yauzl 流式读写存档；校验在恢复之前完成，恢复目标必须为新目录。
 - `vault.ts` / `yggdrasil.ts` / `skins.ts`：操作系统密钥存储、第三方角色与令牌验证、authlib-injector、皮肤服务。只向渲染层传账户公开档案和受限 PNG 数据。
 - `curseforge.ts`：独立 `curseforge-lock.json`；兼容筛选、固定文件 ID、必需依赖、SHA-1、禁用状态和回滚。不会绕过作者禁用第三方分发的限制。
 - `publishing.ts`：可审阅标准包、摘要和有时效的一次性发布票据；只对已有 Modrinth 整合包项目创建版本。票据在网络写入前消耗，未知网络结果禁止自动重试。
@@ -41,6 +41,8 @@ v3 新增实例性能选项，从 v1/v2 迁移时保留对应版本原始备份�
 - `shared/version.ts`：版本来源统一为 package.json，网络标识、启动参数与布局预览同步。
 
 `src/pages/` 按领域拆分，扩展对话框在 `src/dialogs/`。新 API 必须同时更改 types、schema、preload 白名单和处理器，`tsc` 校验契约完整。
+
+0.7 状态 v5 增加 `gameFolders`、选中文件夹与 `Instance.external`，迁移保留原版本备份及 v4 收藏。`Store.runtime()` 对外部实例返回原共享目录，`Minecraft.resolved()` 每次读取原版本元数据和客户端路径；工作目录仍由实例索引决定。普通写操作检查同文件夹和重叠工作目录的运行/任务互斥。`Workspace.tsx` 组合资源、存档、诊断页面，保持唯一的实例选择器及可键盘访问的标签页。
 
 ## 测试
 

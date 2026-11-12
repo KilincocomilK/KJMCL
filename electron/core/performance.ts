@@ -5,9 +5,9 @@ import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import type { Instance, JavaRuntime, LaunchCheck, PerformanceSettings } from '../../shared/types';
 import type { Store } from './store';
+import { checkGamePath } from './game-folders';
 import { Java, inspectJava, javaArch, javaEnvironment } from './java';
-import { Minecraft, allowed, type Version } from './minecraft';
-import { json } from './files';
+import { Minecraft, allowed } from './minecraft';
 const exec = promisify(execFile);
 export const defaults: PerformanceSettings = {
   memory: 'manual',
@@ -141,7 +141,7 @@ export class Performance {
   ) {}
   async check(id: string, test = true, signal?: AbortSignal): Promise<LaunchCheck> {
     const i = this.store.instance(id);
-    const v = await json<Version>(this.mc.profile(id));
+    const { version: v, client } = await this.mc.resolved(id);
     const required = requiredJava(i.version, v.javaVersion?.majorVersion);
     const configured = i.javaPath || this.store.data.settings.javaPath;
     let runtime: JavaRuntime | undefined;
@@ -188,7 +188,7 @@ export class Performance {
         message: '无法执行指定的 Java，请检查路径及权限',
       });
     const files = [
-      path.join(this.store.dir(id), 'client.jar'),
+      client,
       ...this.mc
         .libraryFiles(v, id)
         .filter((f) => !f.native)
@@ -197,6 +197,7 @@ export class Performance {
     const missing: string[] = [];
     for (const file of new Set(files)) {
       signal?.throwIfAborted();
+      if (i.external) await checkGamePath(file, true);
       r.checkedFiles++;
       if (
         !(await stat(file)
@@ -209,7 +210,7 @@ export class Performance {
       r.issues.push({
         code: 'files-missing',
         level: 'error',
-        message: `缺少 ${missing.length} 个游戏文件，请在实例设置中修复：${missing.slice(0, 3).join('、')}`,
+        message: `缺少 ${missing.length} 个游戏文件，${i.external ? '请在原启动器补齐后刷新' : '请在实例设置中修复'}：${missing.slice(0, 3).join('、')}`,
       });
     if (['JAVA_TOOL_OPTIONS', '_JAVA_OPTIONS', 'JDK_JAVA_OPTIONS'].some((k) => process.env[k]))
       r.issues.push({

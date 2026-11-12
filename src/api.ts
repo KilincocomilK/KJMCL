@@ -1,6 +1,7 @@
 import { VERSION } from '../shared/version';
 import type { Api, Snapshot } from '../shared/types';
 const empty: Snapshot = {
+  gameFolders: [],
   accounts: [],
   instances: [],
   tasks: [],

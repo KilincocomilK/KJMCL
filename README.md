@@ -1,6 +1,6 @@
 # KJMCL
 
-Minecraft Java 版桌面启动器，开发版 **0.6.1**。Electron + React + TypeScript，存档引擎使用 Rust，面向 Windows、macOS 和 Linux。
+Minecraft Java 版桌面启动器，开发版 **0.7.0**。Electron + React + TypeScript，存档引擎使用 Rust，面向 Windows、macOS 和 Linux。
 
 作者：[KilincocomilK](https://github.com/KilincocomilK)。项目仓库：[KilincocomilK/KJMCL](https://github.com/KilincocomilK/KJMCL)，目前保持私有。
 
@@ -38,7 +38,7 @@ npm run dist      # 当前平台的安装包，输出到 release/<版本>/
 | --- | --- |
 | 账户 | 离线 / Microsoft / 第三方 Yggdrasil；设备码授权、角色选择、令牌验证和刷新、系统加密存储 |
 | 版本 | 官方版本列表、快照开关、原版 / Fabric / Quilt / Forge / NeoForge、版本继承、完整资源安装与哈希校验、修复 |
-| 实例 | 自定义游戏目录与默认实例根目录、克隆（可含存档）、已有目录复制导入、保留原目录的迁移、内存 / Java / 参数 / 分辨率 |
+| 实例 | 游戏文件夹 → 版本两层管理、外部目录原地索引与刷新、共享 / 版本隔离运行；受管实例支持克隆和目录迁移；内存 / Java / 参数 / 分辨率 |
 | Java | PATH / JAVA_HOME / 常见目录检测、架构与补丁筛选、检测缓存、手选路径、Adoptium Java 8 / 16 / 17 / 21 / 25 下载 |
 | 性能与诊断 | 自动内存预算、自动 / G1 / ZGC、参数冲突与启动文件检查、JVM 试运行、轮转 GC 记录、持久化启动历史与诊断导出、可还原视频预设 |
 | 轻量模式 | 游戏运行后自动释放完整界面渲染进程，使用独立精简窗口；仅接收必要状态，全部游戏退出后自动恢复，切换弹窗通知 |
@@ -61,11 +61,13 @@ npm run dist      # 当前平台的安装包，输出到 release/<版本>/
 
 ## 使用
 
-1. 在“账户”添加离线账户，或配置 Microsoft Client ID 后登录。
-2. 新建游戏实例，选择 Minecraft 版本与加载器，创建并安装。
+1. 点击左下角账户入口，添加离线账户，或配置 Microsoft Client ID 后登录。
+2. 新建游戏实例，或在“游戏实例 → 添加游戏文件夹”选择已有 `.minecraft`。确认各版本的运行位置后添加；游戏文件和存档保持原位，不复制到启动器目录。
 3. 在“设置”检测 Java；必要时安装游戏要求的版本。实例设置可覆盖全局 Java。
-4. 模组中心中选择实例，导入 JAR 或选择 Modrinth / CurseForge 搜索。CurseForge 需要在设置中保存 API Key。
-5. 返回首页选择实例并启动。下载任务和游戏日志会显示实际状态。
+4. 在“资源管理”切换本地资源、模组管理、内容发现。CurseForge 需要在设置中保存 API Key。
+5. 返回首页选择版本并启动。“存档管理”集中提供世界编辑与备份；“诊断与维护”集中提供性能、日志、崩溃报告及磁盘管理。
+
+外部文件夹可刷新版本、调整运行位置识别方式、移除索引；移除索引不删除游戏。外部版本的核心安装和修复仍由原启动器负责。旧版已经复制的实例会继续保留，不会自动删除或切回原目录。详细行为见 [游戏文件夹索引](docs/GAME-FOLDERS.md)。
 
 如需代理，在设置中输入 `http://127.0.0.1:7890` 并保存。默认不强制依赖本地代理。Java 路径应指向 `java` / `java.exe`，不要选择目录或 `javaw.exe`（需要保留控制台输出）。
 
@@ -78,11 +80,12 @@ Microsoft 登录需要项目自己的应用注册 Client ID，启用个人 Micro
 游戏、共享资源、托管 Java、下载缓存、备份和加密凭据可以整体迁移。控制目录及少量界面缓存保留原位，避免账户凭据因加密配置变化而失效；界面 HTTP 磁盘缓存上限设为 32 MiB。目录策略、迁移和卸载说明见 [STORAGE.md](docs/STORAGE.md)。
 
 ```text
-state.json             # schemaVersion=4，账户公开档案、实例、设置与内容收藏
+state.json             # schemaVersion=5，账户、实例、游戏文件夹索引、设置与收藏
 state.json.bak         # 上次保存的状态
 state.json.v1.bak      # 首次从 0.1 升级时保存的原始状态
 state.json.v2.bak      # 首次从 0.2 升级时保存的原始状态
 state.json.v3.bak      # 首次升级 0.6 时保留的旧状态（实例与账户不重置）
+state.json.v4.bak      # 首次升级 0.7 时保留的旧状态（不改变旧实例路径）
 diagnostics/<uuid>.json # 最近 12 次启动记录，不保存完整带令牌命令
 video-backups/<uuid>.json # 可还原的视频设置字段
 credentials/           # 系统加密的 Microsoft 刷新令牌与 .vault 凭据，不发给界面

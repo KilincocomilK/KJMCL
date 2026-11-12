@@ -1,28 +1,17 @@
 import { AccountPage } from './pages/Accounts';
-import { ModPage } from './pages/Mods';
-import { LogPage } from './pages/Logs';
-import { PerformancePage } from './pages/Performance';
 import { StorageSetup } from './pages/Storage';
 import { SettingsPage } from './pages/Settings';
-import { BackupsPage } from './pages/Backups';
-import { ResourcesPage } from './pages/Resources';
 import { MultiplayerPage } from './pages/Multiplayer';
 import { ResourceImport } from './dialogs/ResourceImport';
-import { SavesPage } from './pages/Saves';
 import { LibraryPage, InstanceCard } from './pages/Library';
-import { CatalogPage } from './pages/Catalog';
-import { CrashesPage } from './pages/Crashes';
-import { MaintenancePage } from './pages/Maintenance';
 import type { ResourceCandidate } from '../shared/types';
-import { ImportDialog } from './dialogs/AdvancedDialogs';
-import type { MinecraftScan } from '../shared/types';
 import { CreateDialog, EditDialog } from './dialogs/InstanceDialogs';
 import { type Run, loaderLabel, statusLabel, date } from './ui';
 import { useCallback, useEffect, useState } from 'react';
 import {
   ArrowRight,
-  Archive,
   Activity,
+  Archive,
   FolderOpen,
   ArrowUpRight,
   Box,
@@ -34,14 +23,11 @@ import {
   Layers,
   LoaderCircle,
   Minus,
-  MoreHorizontal,
   Play,
   Plus,
-  Puzzle,
   Settings2,
   SlidersHorizontal,
   Square,
-  Terminal,
   Upload,
   UserRound,
   Users,
@@ -50,20 +36,31 @@ import {
 import type { Snapshot, Instance } from '../shared/types';
 import { api } from './api';
 import { Brand, Empty, Terrain } from './components';
+import {
+  ConsolidatedWorkspace,
+  defaultWorkspaceTab,
+  isWorkspace,
+  normalizeWorkspaceTab,
+  type WorkspaceId,
+  type WorkspaceTab,
+} from './pages/Workspace';
 type Page =
-  | 'home'
-  | 'instances'
-  | 'mods'
-  | 'accounts'
-  | 'downloads'
-  | 'logs'
-  | 'settings'
-  | 'backups'
-  | 'performance';
-type NewPage = Page | 'resources' | 'multiplayer' | 'saves' | 'catalog' | 'crashes' | 'maintenance';
+  'home' | 'instances' | WorkspaceId | 'multiplayer' | 'downloads' | 'accounts' | 'settings';
+const pageLabels: Record<Page, string> = {
+  home: '开始游戏',
+  instances: '游戏实例',
+  resources: '资源管理',
+  saves: '存档管理',
+  multiplayer: '陶瓦联机',
+  diagnostics: '诊断与维护',
+  downloads: '下载任务',
+  accounts: '账户管理',
+  settings: '启动器设置',
+};
 export function App() {
   const [state, setState] = useState<Snapshot>(),
-    [page, setPage] = useState<NewPage>('home'),
+    [page, setPage] = useState<Page>('home'),
+    [workspaceTab, setWorkspaceTab] = useState<WorkspaceTab>(defaultWorkspaceTab('resources')),
     [error, setError] = useState(''),
     [notice, setNotice] = useState(() =>
       new URLSearchParams(location.search).get('modeNotice') === 'exited'
@@ -71,11 +68,14 @@ export function App() {
         : '',
     ),
     [create, setCreate] = useState(false),
-    [editing, setEditing] = useState<Instance>(),
-    [importing, setImporting] = useState<MinecraftScan>();
+    [editing, setEditing] = useState<Instance>();
   const [resourceFiles, setResourceFiles] = useState<ResourceCandidate[]>([]);
   const [windowVisible, setWindowVisible] = useState(false);
   const refresh = useCallback(async () => setState(await api.snapshot()), []);
+  const navigate = useCallback((next: Page, tab?: WorkspaceTab) => {
+    setPage(next);
+    if (isWorkspace(next)) setWorkspaceTab(normalizeWorkspaceTab(next, tab));
+  }, []);
   const run: Run = useCallback(
     async (work, message) => {
       try {
@@ -120,21 +120,14 @@ export function App() {
     account = state.accounts.find((a) => a.id === state.selectedAccountId),
     running = active && state.running.includes(active.id),
     pending = state.tasks.filter((t) => t.status === 'running');
-  const nav: [NewPage, typeof Home, string][] = [
+  const nav: [Page, typeof Home, string][] = [
     ['home', Home, '开始游戏'],
     ['instances', Layers, '游戏实例'],
-    ['catalog', Box, '内容中心'],
-    ['mods', Puzzle, '模组中心'],
     ['resources', FolderOpen, '资源管理'],
+    ['saves', Archive, '存档管理'],
     ['multiplayer', Users, '陶瓦联机'],
-    ['accounts', Users, '账户'],
+    ['diagnostics', Activity, '诊断与维护'],
     ['downloads', Download, '下载任务'],
-    ['logs', Terminal, '游戏日志'],
-    ['backups', Archive, '存档备份'],
-    ['saves', FolderOpen, '存档管理'],
-    ['performance', Activity, '性能与诊断'],
-    ['crashes', Activity, '崩溃报告'],
-    ['maintenance', SlidersHorizontal, '磁盘管理'],
   ];
   const launch = () => (active ? run(() => api.launch(active.id)) : setCreate(true));
   return (
@@ -150,12 +143,13 @@ export function App() {
           </div>
         </div>
         <div className="nav-caption">工作空间</div>
-        <nav>
+        <nav aria-label="工作空间">
           {nav.map(([key, Icon, label]) => (
             <button
               key={key}
               className={'nav-item ' + (page === key ? 'active' : '')}
-              onClick={() => setPage(key)}
+              aria-current={page === key ? 'page' : undefined}
+              onClick={() => navigate(key)}
             >
               <Icon size={18} />
               <span>{label}</span>
@@ -170,12 +164,18 @@ export function App() {
         <div className="sidebar-bottom">
           <button
             className={'nav-item ' + (page === 'settings' ? 'active' : '')}
-            onClick={() => setPage('settings')}
+            aria-current={page === 'settings' ? 'page' : undefined}
+            onClick={() => navigate('settings')}
           >
             <Settings2 size={18} />
             <span>启动器设置</span>
           </button>
-          <button className="account-switch" onClick={() => setPage('accounts')}>
+          <button
+            className="account-switch"
+            aria-label="账户管理"
+            aria-current={page === 'accounts' ? 'page' : undefined}
+            onClick={() => navigate('accounts')}
+          >
             <span className="avatar">
               {account?.name.slice(0, 2).toUpperCase() ?? <UserRound size={20} />}
             </span>
@@ -202,8 +202,7 @@ export function App() {
       <div className="main-shell">
         <header className="titlebar">
           <span>
-            KJMC <span className="slash">/</span>{' '}
-            {page === 'settings' ? '设置' : nav.find((n) => n[0] === page)?.[2]}
+            KJMC <span className="slash">/</span> {page === 'settings' ? '设置' : pageLabels[page]}
           </span>
           <div className="window-actions">
             <button aria-label="最小化" onClick={() => void run(() => api.window('minimize'))}>
@@ -224,27 +223,7 @@ export function App() {
         <main>
           <div className="page-head">
             <div>
-              <h1>
-                {
-                  {
-                    home: '开始游戏',
-                    instances: '游戏实例',
-                    mods: '模组中心',
-                    resources: '资源管理',
-                    multiplayer: '陶瓦联机',
-                    accounts: '账户管理',
-                    downloads: '下载任务',
-                    logs: '游戏日志',
-                    settings: '启动器设置',
-                    backups: '存档备份',
-                    saves: '存档管理',
-                    performance: '性能与诊断',
-                    catalog: '内容中心',
-                    crashes: '崩溃报告',
-                    maintenance: '磁盘管理',
-                  }[page]
-                }
-              </h1>
+              <h1>{pageLabels[page]}</h1>
             </div>
             <div className="head-actions">
               {page === 'home' ? (
@@ -257,15 +236,6 @@ export function App() {
                 </button>
               ) : page === 'instances' ? (
                 <>
-                  <button
-                    onClick={async () => {
-                      const scan = await run(() => api.scanMinecraft());
-                      if (scan) setImporting(scan);
-                    }}
-                  >
-                    <FolderOpen size={16} />
-                    导入目录
-                  </button>
                   <button onClick={() => void run(() => api.importPack())}>
                     <Upload size={16} />
                     导入整合包
@@ -313,7 +283,11 @@ export function App() {
                       active
                         ? active.status === 'ready'
                           ? launch()
-                          : void run(() => api.install(active.id))
+                          : void run(async () => {
+                              if (active.external)
+                                await api.refreshGameFolder(active.external.folderId);
+                              else await api.install(active.id);
+                            })
                         : setCreate(true)
                     }
                   >
@@ -330,7 +304,9 @@ export function App() {
                         ? '创建游戏实例'
                         : active.status === 'ready'
                           ? '启动游戏'
-                          : '安装游戏'}
+                          : active.external
+                            ? '刷新版本索引'
+                            : '安装游戏'}
                     <ArrowRight size={19} />
                   </button>
                   {running && active && (
@@ -343,7 +319,7 @@ export function App() {
                     </button>
                   )}
                   {active?.status === 'ready' && !account && (
-                    <button className="hero-account" onClick={() => setPage('accounts')}>
+                    <button className="hero-account" onClick={() => navigate('accounts')}>
                       添加账户以启动 <ArrowRight size={14} />
                     </button>
                   )}
@@ -397,7 +373,7 @@ export function App() {
                 <h2>
                   我的实例 <span>{state.instances.length.toString().padStart(2, '0')}</span>
                 </h2>
-                <button className="text-button" onClick={() => setPage('instances')}>
+                <button className="text-button" onClick={() => navigate('instances')}>
                   查看全部
                   <ArrowRight size={16} />
                 </button>
@@ -438,36 +414,19 @@ export function App() {
               </div>
             </>
           )}
-          {page === 'instances' &&
-            (state.instances.length ? (
-              <LibraryPage state={state} run={run} onEdit={setEditing} />
-            ) : (
-              <Empty
-                title="创建第一个游戏实例"
-                description="每个实例独立保存模组、设置与存档"
-                action={
-                  <button className="primary" onClick={() => setCreate(true)}>
-                    <Plus size={17} />
-                    新建实例
-                  </button>
-                }
-              />
-            ))}
-          {page === 'mods' && <ModPage state={state} run={run} />}
-          {page === 'catalog' && <CatalogPage state={state} run={run} />}
-          {page === 'crashes' && <CrashesPage state={state} run={run} />}
-          {page === 'maintenance' && <MaintenancePage state={state} run={run} />}
-          {page === 'resources' && (
-            <ResourcesPage
-              key={state.selectedInstanceId + ':' + resourceFiles.length}
+          {page === 'instances' && <LibraryPage state={state} run={run} onEdit={setEditing} />}
+          {isWorkspace(page) && (
+            <ConsolidatedWorkspace
+              workspace={page}
+              tab={workspaceTab}
+              onTab={setWorkspaceTab}
               state={state}
               run={run}
+              resourceFiles={resourceFiles}
               onImport={setResourceFiles}
             />
           )}
           {page === 'multiplayer' && <MultiplayerPage state={state} run={run} />}
-          {page === 'backups' && <BackupsPage state={state} run={run} />}
-          {page === 'saves' && <SavesPage state={state} run={run} />}
           {page === 'accounts' && <AccountPage state={state} run={run} />}
           {page === 'downloads' &&
             (state.tasks.length ? (
@@ -518,8 +477,6 @@ export function App() {
             ) : (
               <Empty title="没有下载任务" description="安装进度会显示在这里" />
             ))}
-          {page === 'logs' && <LogPage state={state} run={run} />}
-          {page === 'performance' && <PerformancePage state={state} run={run} />}
           {page === 'settings' && (
             <SettingsPage key={JSON.stringify(state.settings)} state={state} run={run} />
           )}
@@ -536,7 +493,7 @@ export function App() {
                 ? '游戏运行中'
                 : '就绪'}
           </span>
-          <button onClick={() => setPage('downloads')}>
+          <button onClick={() => navigate('downloads')}>
             {pending[0] ? (
               <>
                 {pending[0].detail}
@@ -551,9 +508,6 @@ export function App() {
         </footer>
       </div>
       {create && <CreateDialog state={state} run={run} onClose={() => setCreate(false)} />}
-      {importing && (
-        <ImportDialog scan={importing} run={run} onClose={() => setImporting(undefined)} />
-      )}
       {editing && <EditDialog instance={editing} run={run} onClose={() => setEditing(undefined)} />}
       {(error || notice) && (
         <div role={error ? 'alert' : 'status'} className={'toast ' + (error ? 'error' : '')}>

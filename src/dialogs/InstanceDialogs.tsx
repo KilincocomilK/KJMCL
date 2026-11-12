@@ -194,6 +194,8 @@ export function EditDialog({
         onSubmit={async (e) => {
           e.preventDefault();
           const result = await run(async () => {
+            if (i.external && i.external.layout !== instance.external?.layout)
+              await api.setGameLayout({ id: i.id, layout: i.external.layout });
             await api.updateInstance({
               ...i,
               jvmArgs: args
@@ -217,26 +219,62 @@ export function EditDialog({
           </Field>
           <div className="row">
             <div className="path-value grow">{instance.gameDir || '默认游戏目录'}</div>
-            <button
-              type="button"
-              onClick={async () => {
-                const dir = await run(() => api.pickDirectory());
-                if (dir) {
-                  const task = await run(
-                    () => api.relocateInstance({ id: i.id, directory: dir }),
-                    '正在复制到新目录，原目录保留',
-                  );
-                  if (task) onClose();
-                }
-              }}
-            >
-              更换目录
-            </button>
+            {!instance.external && (
+              <button
+                type="button"
+                onClick={async () => {
+                  const dir = await run(() => api.pickDirectory());
+                  if (dir) {
+                    const task = await run(
+                      () => api.relocateInstance({ id: i.id, directory: dir }),
+                      '正在复制到新目录，原目录保留',
+                    );
+                    if (task) onClose();
+                  }
+                }}
+              >
+                更换目录
+              </button>
+            )}
           </div>
+          {i.external && (
+            <Field label="运行位置">
+              <select
+                value={i.external.layout}
+                onChange={(e) =>
+                  set({
+                    ...i,
+                    external: {
+                      ...i.external!,
+                      layout: e.target.value as 'auto' | 'shared' | 'version',
+                    },
+                  })
+                }
+              >
+                <option value="auto">沿用原配置 / 自动识别</option>
+                <option value="shared">共享游戏文件夹</option>
+                <option value="version">版本独立目录</option>
+              </select>
+              <small>只改变运行位置的索引，不搬动游戏或存档。</small>
+              <button
+                type="button"
+                onClick={() =>
+                  void run(async () => {
+                    await api.setGameLayout({ id: i.id, layout: 'auto' });
+                    onClose();
+                  }, '已重新识别运行位置')
+                }
+              >
+                重新识别运行位置
+              </button>
+            </Field>
+          )}
           <div className="row">
-            <button type="button" onClick={() => setAdvanced('clone')}>
-              克隆实例
-            </button>
+            {!instance.external && (
+              <button type="button" onClick={() => setAdvanced('clone')}>
+                克隆实例
+              </button>
+            )}
             <button type="button" onClick={() => setAdvanced('publish')}>
               整合包发布
             </button>
@@ -311,7 +349,7 @@ export function EditDialog({
             }}
           >
             <Trash2 size={16} />
-            删除实例
+            {i.external ? '移除版本索引' : '删除实例'}
           </button>
           <div className="row">
             <button
@@ -323,10 +361,18 @@ export function EditDialog({
             </button>
             <button
               type="button"
-              onClick={() => void run(() => api.install(i.id), '已开始校验安装')}
+              onClick={() =>
+                void run(
+                  async () => {
+                    if (i.external) await api.refreshGameFolder(i.external.folderId);
+                    else await api.install(i.id);
+                  },
+                  i.external ? '已刷新版本索引' : '已开始校验安装',
+                )
+              }
             >
               <RefreshCw size={16} />
-              修复
+              {i.external ? '刷新索引' : '修复'}
             </button>
             <button className="primary">保存</button>
           </div>

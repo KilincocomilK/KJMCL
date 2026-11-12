@@ -4,7 +4,15 @@ import type { Snapshot, LogLine } from '../../shared/types';
 import { api } from '../api';
 import { InstanceSelect } from '../components';
 import { type Run, size } from '../ui';
-export function LogPage({ state, run }: { state: Snapshot; run: Run }) {
+export function LogPage({
+  state,
+  run,
+  showInstanceSelect = true,
+}: {
+  state: Snapshot;
+  run: Run;
+  showInstanceSelect?: boolean;
+}) {
   const [lines, setLines] = useState<LogLine[]>([]),
     [query, setQuery] = useState(''),
     [errors, setErrors] = useState(false);
@@ -30,7 +38,7 @@ export function LogPage({ state, run }: { state: Snapshot; run: Run }) {
   return (
     <>
       <div className="toolbar">
-        <InstanceSelect state={state} run={run} />
+        {showInstanceSelect && <InstanceSelect state={state} run={run} />}
         <div className="row">
           <label className="check">
             <input type="checkbox" checked={errors} onChange={(e) => setErrors(e.target.checked)} />

@@ -16,7 +16,15 @@ const kinds: Record<ContentKind, string> = {
   shader: '光影',
   modpack: '整合包',
 };
-export function CatalogPage({ state, run }: { state: Snapshot; run: Run }) {
+export function CatalogPage({
+  state,
+  run,
+  showInstanceSelect = true,
+}: {
+  state: Snapshot;
+  run: Run;
+  showInstanceSelect?: boolean;
+}) {
   const id = state.selectedInstanceId ?? '';
   const [tab, setTab] = useState<'discover' | 'favorites'>('discover'),
     [kind, setKind] = useState<ContentKind>('mod'),
@@ -88,7 +96,7 @@ export function CatalogPage({ state, run }: { state: Snapshot; run: Run }) {
             收藏夹 · {saved.length}
           </button>
         </div>
-        <InstanceSelect state={state} run={run} />
+        {showInstanceSelect && <InstanceSelect state={state} run={run} />}
       </div>
       <form
         className="toolbar catalog-filters"

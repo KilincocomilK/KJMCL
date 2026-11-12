@@ -20,13 +20,23 @@ const status = {
   stopped: '已结束',
   interrupted: '结果未知',
 };
-export function PerformancePage({ state, run }: { state: Snapshot; run: Run }) {
+export function PerformancePage({
+  state,
+  run,
+  showInstanceSelect = true,
+}: {
+  state: Snapshot;
+  run: Run;
+  showInstanceSelect?: boolean;
+}) {
   const instance = state.instances.find((i) => i.id === state.selectedInstanceId);
   return (
     <>
-      <div className="toolbar">
-        <InstanceSelect state={state} run={run} />
-      </div>
+      {showInstanceSelect && (
+        <div className="toolbar">
+          <InstanceSelect state={state} run={run} />
+        </div>
+      )}
       {instance ? (
         <PerformanceContent key={instance.id} instance={instance} state={state} run={run} />
       ) : (

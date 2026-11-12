@@ -250,7 +250,7 @@ describe('durable diagnosis', () => {
     old.instances[0].memoryMb = 7168;
     await atomicJson(file, old);
     const migrated = new Store(store.root);
-    expect(migrated.data.schemaVersion).toBe(4);
+    expect(migrated.data.schemaVersion).toBe(5);
     expect(migrated.instance('test').memoryMb).toBe(7168);
     expect(migrated.instance('test').performance?.memory).toBe('manual');
     expect(JSON.parse(await readFile(file + '.v2.bak', 'utf8'))).toEqual(old);

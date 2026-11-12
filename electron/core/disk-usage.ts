@@ -4,6 +4,7 @@ import { lstat, readdir, unlink } from 'node:fs/promises';
 import { randomUUID } from 'node:crypto';
 import type { Store } from './store';
 import { assertOwned, contains } from './instances';
+import { checkGamePath } from './game-folders';
 import { inside } from './files';
 import type { DiskReport, DiskRow, CacheReview } from '../../shared/types';
 type Candidate = { name: string; bytes: number; stamp: string };
@@ -58,10 +59,23 @@ export class DiskUsage {
       row.skipped = warnings.length - start;
       rows.push(row);
     };
+    const externalRoots: string[] = [];
+    for (const folder of this.store.data.gameFolders) {
+      try {
+        await checkGamePath(folder.path);
+        await measure('folder:' + folder.id, folder.name + '（外部文件夹）', folder.path);
+        externalRoots.push(folder.path);
+      } catch {
+        warnings.push(`文件夹 ${folder.name}：暂不可访问`);
+      }
+    }
     for (const i of this.store.data.instances) {
       try {
+        if (i.external && externalRoots.some((root) => contains(root, this.store.dir(i.id))))
+          continue;
         await assertOwned(this.store, i.id);
         await measure('instance:' + i.id, i.name, this.store.dir(i.id));
+        if (i.external) externalRoots.push(this.store.dir(i.id));
       } catch (e) {
         warnings.push(`实例 ${i.name}：${e instanceof Error ? e.message : String(e)}`);
       }

@@ -15,7 +15,15 @@ import { api } from '../api';
 import { Empty, InstanceSelect } from '../components';
 import { type Run, loaderLabel, size } from '../ui';
 import { ModAuditPanel } from './ModAudit';
-export function ModPage({ state, run }: { state: Snapshot; run: Run }) {
+export function ModPage({
+  state,
+  run,
+  showInstanceSelect = true,
+}: {
+  state: Snapshot;
+  run: Run;
+  showInstanceSelect?: boolean;
+}) {
   const [tab, setTab] = useState<'local' | 'discover' | 'audit'>('local'),
     [mods, setMods] = useState<ModFile[]>([]),
     [query, setQuery] = useState(''),
@@ -69,7 +77,7 @@ export function ModPage({ state, run }: { state: Snapshot; run: Run }) {
             检查与批量操作
           </button>
         </div>
-        <InstanceSelect state={state} run={run} />
+        {showInstanceSelect && <InstanceSelect state={state} run={run} />}
         <select
           aria-label="模组来源"
           className="source-select"

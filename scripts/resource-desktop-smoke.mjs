@@ -1,4 +1,4 @@
-import { firstVisibleWindow } from './desktop-test-utils.mjs';
+import { firstVisibleWindow, navigateWorkspace } from './desktop-test-utils.mjs';
 import { _electron as electron, expect } from '@playwright/test';
 import { mkdtemp, mkdir, writeFile, readFile, rm } from 'node:fs/promises';
 import os from 'node:os';
@@ -59,7 +59,7 @@ try {
       );
     });
   for (const pageName of ['开始游戏', '账户', '陶瓦联机', '资源管理']) {
-    await page.getByRole('button', { name: pageName, exact: true }).click();
+    await navigateWorkspace(page, pageName);
     await drop();
     await expect(page.getByRole('dialog', { name: '添加资源', exact: true })).toBeVisible();
     await expect(page.getByLabel('drop.jar 实例')).toHaveValue(id);
@@ -73,7 +73,7 @@ try {
   }
   const imported = await readFile(path.join(root, 'data', 'instances', id, 'mods', 'drop.jar'));
   expect(imported).toEqual(await readFile(source));
-  await page.getByLabel('资源实例').selectOption(id);
+  await page.getByLabel('选择实例').selectOption(id);
   await page.getByRole('button', { name: /^模组\s*1$/ }).click();
   await expect(page.locator('.resource-row').getByText('drop.jar', { exact: true })).toBeVisible();
   await page.getByRole('button', { name: '预览', exact: true }).click();
@@ -87,9 +87,9 @@ try {
   await expect(
     page.locator('.resource-row').getByText('renamed.jar', { exact: true }),
   ).toBeVisible();
-  await page.getByLabel('资源实例').selectOption(second);
+  await page.getByLabel('选择实例').selectOption(second);
   await expect(page.locator('.resource-row')).toHaveCount(0);
-  await page.getByLabel('资源实例').selectOption(id);
+  await page.getByLabel('选择实例').selectOption(id);
   await page.getByRole('button', { name: /^模组\s*1$/ }).click();
   await mkdir('.local', { recursive: true });
   await page.screenshot({ path: '.local/resources-v040.png' });

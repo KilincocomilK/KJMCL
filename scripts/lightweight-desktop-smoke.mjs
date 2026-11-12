@@ -1,4 +1,4 @@
-import { firstVisibleWindow } from './desktop-test-utils.mjs';
+import { firstVisibleWindow, navigateWorkspace } from './desktop-test-utils.mjs';
 import { _electron as electron, expect } from '@playwright/test';
 import { mkdtemp, mkdir, writeFile, readFile, rm } from 'node:fs/promises';
 import os from 'node:os';
@@ -171,7 +171,7 @@ public class LightSmoke {
   // Explicit full view lasts for this play session and supplies a recovery notification.
   page = await swap(page, () => page.getByRole('button', { name: '打开完整界面' }).click(), false);
   await expect(page.getByRole('status')).toContainText('已退出轻量模式');
-  await page.getByRole('button', { name: '游戏日志', exact: true }).click();
+  await navigateWorkspace(page, '游戏日志');
   const fullMetrics = await metrics(page);
   expect((await page.evaluate(() => window.kjmcl.snapshot())).running).toEqual([ids[0]]);
   const log = (await page.evaluate((id) => window.kjmcl.logs(id), ids[0]))

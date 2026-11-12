@@ -23,7 +23,15 @@ import type {
   SavePatch,
 } from '../../shared/types';
 const dims: Record<string, string> = { overworld: '主世界', the_nether: '下界', the_end: '末地' };
-export function SavesPage({ state, run }: { state: Snapshot; run: Run }) {
+export function SavesPage({
+  state,
+  run,
+  showInstanceSelect = true,
+}: {
+  state: Snapshot;
+  run: Run;
+  showInstanceSelect?: boolean;
+}) {
   const id = state.selectedInstanceId ?? '',
     [worlds, setWorlds] = useState<SaveMetadata[]>([]),
     [world, setWorld] = useState(''),
@@ -131,7 +139,7 @@ export function SavesPage({ state, run }: { state: Snapshot; run: Run }) {
   return (
     <div className="save-manager">
       <div className="toolbar">
-        <InstanceSelect state={state} run={run} />
+        {showInstanceSelect && <InstanceSelect state={state} run={run} />}
         <button disabled={!!busy} onClick={() => void refreshList()}>
           <RefreshCw size={16} />
           刷新存档

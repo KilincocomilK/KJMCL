@@ -147,12 +147,18 @@ app
       backups = new Backups(store),
       publishing = new Publishing(store, net, vault, cf);
     auth.thirdParty = ygg;
+    const assertIdle = (id: string) => {
+      if (
+        tasks.busy('game-folders') ||
+        store.related(id).some((i) => tasks.busy(i.id) || launcher.processes.has(i.id))
+      )
+        throw new Error('请先停止此游戏文件夹中的游戏或等待任务完成');
+    };
     const writable = async (id: string) => {
-      store.instance(id);
-      if (tasks.busy(id) || launcher.processes.has(id))
-        throw new Error('请先停止游戏或等待任务完成');
+      assertIdle(id);
       if (store.instance(id).status === 'installing') throw new Error('实例正在安装');
       await assertOwned(store, id);
+      assertIdle(id);
     };
     const create = (value: Parameters<Api['createInstance']>[0]) => {
       const id = randomUUID();
@@ -178,6 +184,7 @@ app
       };
       store.data.instances.push(i);
       store.data.selectedInstanceId = id;
+      delete store.data.selectedGameFolderId;
       store.save();
       changed();
       return id;
@@ -289,6 +296,7 @@ app
         publishing,
         create,
         writable,
+        assertIdle,
         changed,
         gameRunning: () => launcher.processes.size > 0,
       }),
@@ -319,8 +327,19 @@ app
           store.data.selectedAccountId = value.accountId;
         }
         if (value.instanceId) {
-          store.instance(value.instanceId);
+          const instance = store.instance(value.instanceId);
           store.data.selectedInstanceId = value.instanceId;
+          store.data.selectedGameFolderId = instance.external?.folderId;
+        }
+        if (value.folderId) {
+          if (value.folderId !== 'managed') store.folder(value.folderId);
+          store.data.selectedGameFolderId =
+            value.folderId === 'managed' ? undefined : value.folderId;
+          const members = store.data.instances.filter(
+            (i) => i.external?.folderId === store.data.selectedGameFolderId,
+          );
+          if (!members.some((i) => i.id === store.data.selectedInstanceId))
+            store.data.selectedInstanceId = members[0]?.id;
         }
         store.save();
         changed();
@@ -375,19 +394,25 @@ app
         changed();
       },
       deleteInstance: async (id) => {
-        await writable(id);
         const i = store.instance(id);
+        if (i.external) assertIdle(id);
+        else await writable(id);
         const result = await dialog.showMessageBox(window!, {
           type: 'warning',
-          message: `将“${i.name}”及其存档移入回收站？`,
-          buttons: ['取消', '移入回收站'],
+          message: i.external ? `移除“${i.name}”的版本索引？` : `将“${i.name}”及其存档移入回收站？`,
+          detail: i.external ? '游戏文件与存档保留。刷新游戏文件夹后可重新发现此版本。' : '',
+          buttons: ['取消', i.external ? '移除索引' : '移入回收站'],
           defaultId: 0,
           cancelId: 0,
         });
         if (result.response !== 1) return;
-        const dir = store.dir(id);
-        await mkdir(dir, { recursive: true });
-        await shell.trashItem(dir);
+        assertIdle(id);
+        if (!i.external) {
+          await writable(id);
+          const dir = store.dir(id);
+          await mkdir(dir, { recursive: true });
+          await shell.trashItem(dir);
+        }
         store.data.instances = store.data.instances.filter((x) => x.id !== id);
         if (store.data.selectedInstanceId === id)
           store.data.selectedInstanceId = store.data.instances[0]?.id;

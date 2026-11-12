@@ -1,4 +1,13 @@
 export type Loader = 'vanilla' | 'fabric' | 'quilt' | 'forge' | 'neoforge';
+export type GameLayout = 'auto' | 'shared' | 'version';
+export interface GameFolder {
+  id: string;
+  name: string;
+  path: string;
+  addedAt: number;
+  refreshedAt: number;
+  error?: string;
+}
 export interface Account {
   id: string;
   name: string;
@@ -27,6 +36,7 @@ export interface Instance {
   localRuntime?: boolean;
   performance?: PerformanceSettings;
   organization?: InstanceOrganization;
+  external?: { folderId: string; versionId: string; layout: GameLayout };
 }
 export interface InstanceOrganization {
   favorite: boolean;
@@ -207,6 +217,8 @@ export interface VersionSummary {
   sha1?: string;
 }
 export interface Snapshot {
+  gameFolders: GameFolder[];
+  selectedGameFolderId?: string;
   favorites?: ContentFavorite[];
   accounts: Account[];
   instances: Instance[];
@@ -242,7 +254,7 @@ export interface Backup {
 export interface MinecraftScan {
   selectionId: string;
   root: string;
-  versions: { id: string; name: string }[];
+  versions: { id: string; name: string; gameDir: string; layout: GameLayout; error?: string }[];
 }
 export interface PackOptions {
   id: string;
@@ -408,7 +420,7 @@ export interface Api {
   lightweightState(): Promise<LightweightState>;
   setLightweight(active: boolean): Promise<void>;
   settings(value: Settings): Promise<void>;
-  select(value: { accountId?: string; instanceId?: string }): Promise<void>;
+  select(value: { accountId?: string; instanceId?: string; folderId?: string }): Promise<void>;
   addOffline(name: string): Promise<Account>;
   removeAccount(id: string): Promise<void>;
   beginLogin(): Promise<DeviceCode>;
@@ -462,10 +474,12 @@ export interface Api {
   scanMinecraft(): Promise<MinecraftScan | null>;
   importMinecraft(value: {
     selectionId: string;
-    versionId: string;
     name: string;
-    gameDir?: string;
+    layouts: { versionId: string; layout: GameLayout }[];
   }): Promise<string>;
+  refreshGameFolder(id: string): Promise<void>;
+  removeGameFolder(id: string): Promise<void>;
+  setGameLayout(value: { id: string; layout: GameLayout }): Promise<void>;
   worlds(id: string): Promise<World[]>;
   backups(id: string): Promise<Backup[]>;
   backupWorld(value: { id: string; world: string }): Promise<string>;

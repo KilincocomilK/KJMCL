@@ -3,12 +3,11 @@ import path from 'node:path';
 import { spawn, type ChildProcess } from 'node:child_process';
 import { appendFile, mkdir } from 'node:fs/promises';
 import { Store } from './store';
-import { Minecraft, expandArguments, type Version } from './minecraft';
+import { Minecraft, expandArguments } from './minecraft';
 import { Java } from './java';
 import { Performance, defaults } from './performance';
 import { Diagnostics } from './diagnostics';
 import { Auth } from './auth';
-import { json } from './files';
 import { clientVersion } from './client-version';
 import { GameLogDecoder } from './game-logs';
 import type { LogLine, LaunchSession } from '../../shared/types';
@@ -67,7 +66,7 @@ export class Launcher {
       (a) => a.id === this.store.data.selectedAccountId,
     );
     if (!account) throw new Error('请先选择账户');
-    const v = await json<Version>(this.mc.profile(id));
+    const { version: v, client } = await this.mc.resolved(id);
     if (i.localRuntime) {
       const version = await clientVersion(path.join(this.store.dir(id), 'client.jar'), i.version);
       if (version !== i.version) {
@@ -94,10 +93,10 @@ export class Launcher {
         .libraryFiles(v, id)
         .filter((f) => !f.native)
         .map((f) => f.dest),
-      path.join(root, 'client.jar'),
+      client,
     ].join(path.delimiter);
     const vars: Record<string, string> = {
-      natives_directory: path.join(root, 'natives'),
+      natives_directory: await this.mc.prepareNatives(id, v),
       launcher_name: 'KJMCL',
       launcher_version: VERSION,
       classpath: cp,

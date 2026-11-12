@@ -34,7 +34,7 @@ const directories = new Set([
   'video-backups',
 ]);
 const ownedName = (name: string) =>
-  directories.has(name) || /^state\.json(?:\.bak|\.v[123]\.bak)?$/.test(name);
+  directories.has(name) || /^state\.json(?:\.bak|\.v[1-5]\.bak)?$/.test(name);
 const configSchema = z.object({
   version: z.literal(1),
   root: z.string().min(1),
@@ -253,7 +253,10 @@ export class Storage {
       )
         throw new Error('目标文件已变化，未切换：' + f.file);
     const targetState = await json<any>(path.join(m.target, 'state.json'));
-    if (![1, 2, 3, 4].includes(targetState.schemaVersion) || !Array.isArray(targetState.instances))
+    if (
+      ![1, 2, 3, 4, 5].includes(targetState.schemaVersion) ||
+      !Array.isArray(targetState.instances)
+    )
       throw new Error('目标状态无效');
     await atomicJson(path.join(this.layout.control, 'storage-location.json'), {
       ...this.layout.config,

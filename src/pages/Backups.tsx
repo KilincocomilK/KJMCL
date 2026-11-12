@@ -4,7 +4,15 @@ import type { Snapshot, World, Backup } from '../../shared/types';
 import { api } from '../api';
 import { Empty, InstanceSelect } from '../components';
 import { type Run, size } from '../ui';
-export function BackupsPage({ state, run }: { state: Snapshot; run: Run }) {
+export function BackupsPage({
+  state,
+  run,
+  showInstanceSelect = true,
+}: {
+  state: Snapshot;
+  run: Run;
+  showInstanceSelect?: boolean;
+}) {
   const [worlds, setWorlds] = useState<World[]>([]),
     [backups, setBackups] = useState<Backup[]>([]);
   const id = state.selectedInstanceId;
@@ -23,7 +31,7 @@ export function BackupsPage({ state, run }: { state: Snapshot; run: Run }) {
   return (
     <>
       <div className="toolbar">
-        <InstanceSelect state={state} run={run} />
+        {showInstanceSelect && <InstanceSelect state={state} run={run} />}
         <button onClick={() => void refresh()}>
           <RefreshCw size={16} />
           刷新

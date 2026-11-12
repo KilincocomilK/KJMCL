@@ -39,6 +39,15 @@ const directory = z
   .string()
   .max(4096)
   .refine((v) => !v.includes('\0'));
+export const gameLayoutSchema = z.enum(['auto', 'shared', 'version']);
+export const gameFolderSchema = z.object({
+  id,
+  name: z.string().trim().min(1).max(80),
+  path: directory,
+  addedAt: z.number(),
+  refreshedAt: z.number(),
+  error: z.string().optional(),
+});
 export const settingsSchema = z.object({
   memoryMb: z.number().int().min(512).max(65536),
   javaPath: z.string().max(4096),
@@ -72,6 +81,7 @@ export const instanceSchema = z.object({
   error: z.string().optional(),
   gameDir: directory.optional(),
   localRuntime: z.boolean().optional(),
+  external: z.object({ folderId: id, versionId: fileName, layout: gameLayoutSchema }).optional(),
   performance: z
     .object({
       memory: z.enum(['manual', 'auto']),
@@ -187,7 +197,11 @@ export const schemas = {
   lightweightState: none,
   setLightweight: z.boolean(),
   settings: settingsSchema,
-  select: z.object({ accountId: id.optional(), instanceId: id.optional() }),
+  select: z.object({
+    accountId: id.optional(),
+    instanceId: id.optional(),
+    folderId: id.optional(),
+  }),
   addOffline: z.string().regex(/^[a-zA-Z0-9_]{3,16}$/),
   removeAccount: id,
   beginLogin: none,
@@ -244,10 +258,12 @@ export const schemas = {
   scanMinecraft: none,
   importMinecraft: z.object({
     selectionId: id,
-    versionId: fileName,
     name: z.string().trim().min(1).max(80),
-    gameDir: directory.optional(),
+    layouts: z.array(z.object({ versionId: fileName, layout: gameLayoutSchema })).max(2000),
   }),
+  refreshGameFolder: id,
+  removeGameFolder: id,
+  setGameLayout: z.object({ id, layout: gameLayoutSchema }),
   worlds: id,
   backups: id,
   backupWorld: z.object({ id, world: fileName }),

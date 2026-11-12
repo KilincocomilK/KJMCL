@@ -41,6 +41,7 @@ jobs:
           node scripts/save-desktop-smoke.mjs
           node scripts/library-desktop-smoke.mjs
           node scripts/lightweight-desktop-smoke.mjs
+          node scripts/folders-desktop-smoke.mjs
       - name: Desktop integration (Linux)
         if: runner.os == 'Linux'
         run: |

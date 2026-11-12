@@ -16,6 +16,9 @@ type Extra = Pick<
   | 'relocateInstance'
   | 'scanMinecraft'
   | 'importMinecraft'
+  | 'refreshGameFolder'
+  | 'removeGameFolder'
+  | 'setGameLayout'
   | 'worlds'
   | 'backups'
   | 'backupWorld'
@@ -46,6 +49,7 @@ export function featureHandlers(c: {
   publishing: Publishing;
   create: (v: Parameters<Api['createInstance']>[0]) => string;
   writable: (id: string) => Promise<void>;
+  assertIdle: (id: string) => void;
   changed: () => void;
   gameRunning: () => boolean;
 }): Extra {
@@ -78,6 +82,7 @@ export function featureHandlers(c: {
     cloneInstance: async (v) => {
       await writable(v.id);
       const i = store.instance(v.id);
+      if (i.external) throw new Error('外部版本只保留索引，不复制游戏文件');
       if (i.status === 'installing' || i.status === 'error')
         throw new Error('请先完成或修复源实例');
       const target = create({
@@ -101,24 +106,46 @@ export function featureHandlers(c: {
     },
     scanMinecraft: async () => {
       const r = await dialog.showOpenDialog(c.window(), {
-        title: '选择已有 .minecraft 目录',
+        title: '添加游戏文件夹（包含 versions）',
         properties: ['openDirectory'],
       });
-      return r.canceled ? null : instances.scan(r.filePaths[0]);
+      return r.canceled ? null : instances.folders.scan(r.filePaths[0]);
     },
     importMinecraft: async (v) => {
-      const id = create({
-        name: v.name,
-        version: 'importing',
-        loader: 'vanilla',
-        gameDir: v.gameDir,
+      for (const i of store.data.instances) c.assertIdle(i.id);
+      return tasks.exclusive('game-folders', async () => {
+        const id = await instances.folders.add(v);
+        changed();
+        return id;
       });
-      store.instance(id).status = 'installing';
-      store.save();
-      tasks.start('导入 ' + v.name, id, (ctx) =>
-        instances.import(v.selectionId, v.versionId, id, ctx),
-      );
-      return id;
+    },
+    refreshGameFolder: async (id) => {
+      for (const i of store.data.instances.filter((v) => v.external?.folderId === id))
+        c.assertIdle(i.id);
+      await tasks.exclusive('game-folders', () => instances.folders.refresh(id));
+      changed();
+    },
+    removeGameFolder: async (id) => {
+      const folder = store.folder(id);
+      for (const i of store.data.instances.filter((v) => v.external?.folderId === id))
+        c.assertIdle(i.id);
+      const response = await dialog.showMessageBox(c.window(), {
+        message: `移除“${folder.name}”的索引？`,
+        detail: '游戏文件与存档会留在原位置。',
+        buttons: ['取消', '移除索引'],
+        defaultId: 0,
+        cancelId: 0,
+      });
+      if (response.response !== 1) return;
+      for (const i of store.data.instances.filter((v) => v.external?.folderId === id))
+        c.assertIdle(i.id);
+      await tasks.exclusive('game-folders', async () => instances.folders.remove(id));
+      changed();
+    },
+    setGameLayout: async (v) => {
+      c.assertIdle(v.id);
+      await tasks.exclusive('game-folders', () => instances.folders.setLayout(v.id, v.layout));
+      changed();
     },
     worlds: (id) => backups.worlds(id),
     backups: (id) => backups.list(id),

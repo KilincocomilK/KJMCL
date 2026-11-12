@@ -15,10 +15,12 @@ export function ResourcesPage({
   state,
   run,
   onImport,
+  showInstanceSelect = true,
 }: {
   state: Snapshot;
   run: Run;
   onImport: (files: ResourceCandidate[]) => void;
+  showInstanceSelect?: boolean;
 }) {
   const id = state.selectedInstanceId ?? '',
     [files, setFiles] = useState<ResourceFile[]>([]),
@@ -56,20 +58,22 @@ export function ResourcesPage({
   return (
     <>
       <div className="toolbar">
-        <select
-          aria-label="资源实例"
-          value={id}
-          onChange={(e) => void run(() => api.select({ instanceId: e.target.value }))}
-        >
-          <option value="" disabled>
-            选择实例
-          </option>
-          {state.instances.map((i) => (
-            <option key={i.id} value={i.id}>
-              {i.name} · {i.version}
+        {showInstanceSelect && (
+          <select
+            aria-label="资源实例"
+            value={id}
+            onChange={(e) => void run(() => api.select({ instanceId: e.target.value }))}
+          >
+            <option value="" disabled>
+              选择实例
             </option>
-          ))}
-        </select>
+            {state.instances.map((i) => (
+              <option key={i.id} value={i.id}>
+                {i.name} · {i.version}
+              </option>
+            ))}
+          </select>
+        )}
         <button disabled={!id} onClick={() => void run(() => api.openFolder({ id, folder: kind }))}>
           <FolderOpen size={16} />
           打开目录

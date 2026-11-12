@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { Copy, FolderOpen, Upload, Download, RefreshCw, ArrowUpRight } from 'lucide-react';
-import type { Account, Instance, MinecraftScan, PackReview } from '../../shared/types';
+import type { Account, Instance, MinecraftScan, PackReview, GameLayout } from '../../shared/types';
 import { api } from '../api';
 import { Field, Modal } from '../components';
 import type { Run } from '../ui';
@@ -51,12 +51,21 @@ export function ImportDialog({
   run: Run;
   onClose: () => void;
 }) {
-  const [version, setVersion] = useState(scan.versions[0]?.id ?? ''),
-    [name, setName] = useState('导入的 Minecraft'),
-    [dir, setDir] = useState(''),
+  const [name, setName] = useState(
+      scan.root.split(/[\\/]/).filter(Boolean).at(-1)?.slice(0, 80) || '外部游戏',
+    ),
+    [layouts, setLayouts] = useState<Record<string, GameLayout>>(
+      Object.fromEntries(scan.versions.map((v) => [v.id, 'auto'])),
+    ),
     [busy, setBusy] = useState(false);
   return (
-    <Modal title="导入游戏目录" onClose={onClose}>
+    <Modal
+      title="添加游戏文件夹"
+      wide
+      onClose={() => {
+        if (!busy) onClose();
+      }}
+    >
       <form
         onSubmit={async (e) => {
           e.preventDefault();
@@ -64,9 +73,11 @@ export function ImportDialog({
           const id = await run(() =>
             api.importMinecraft({
               selectionId: scan.selectionId,
-              versionId: version,
               name,
-              gameDir: dir || undefined,
+              layouts: Object.entries(layouts).map(([versionId, layout]) => ({
+                versionId,
+                layout,
+              })),
             }),
           );
           setBusy(false);
@@ -75,23 +86,43 @@ export function ImportDialog({
       >
         <div className="form-body">
           <div className="path-value">{scan.root}</div>
-          <Field label="版本">
-            <select value={version} onChange={(e) => setVersion(e.target.value)}>
-              {scan.versions.map((v) => (
-                <option key={v.id}>{v.id}</option>
-              ))}
-            </select>
-          </Field>
-          <Field label="实例名称">
+          <Field label="文件夹名称">
             <input required maxLength={80} value={name} onChange={(e) => setName(e.target.value)} />
           </Field>
-          <DirectoryField value={dir} onChange={setDir} />
-          <small>复制游戏文件与存档，保留原目录。</small>
+          <p className="muted">
+            发现 {scan.versions.length} 个版本。只添加索引，游戏和存档留在原位置。
+          </p>
+          <div className="folder-import-versions">
+            {scan.versions.map((v) => (
+              <div className="folder-import-version" key={v.id}>
+                <strong>{v.name}</strong>
+                <select
+                  aria-label={'运行目录 · ' + v.id}
+                  value={layouts[v.id]}
+                  onChange={(e) => setLayouts({ ...layouts, [v.id]: e.target.value as GameLayout })}
+                >
+                  <option value="auto">沿用原配置 / 自动识别</option>
+                  <option value="shared">共享游戏文件夹</option>
+                  <option value="version">版本独立目录</option>
+                </select>
+                <small className="path-value">
+                  {layouts[v.id] === 'shared'
+                    ? scan.root
+                    : layouts[v.id] === 'version'
+                      ? scan.root +
+                        (scan.root.includes('\\') ? '\\versions\\' : '/versions/') +
+                        v.id
+                      : v.gameDir}
+                </small>
+                {v.error && <small className="inline-error">{v.error}</small>}
+              </div>
+            ))}
+          </div>
         </div>
         <div className="modal-footer">
           <button className="primary" disabled={busy}>
-            <Download size={16} />
-            复制导入
+            <FolderOpen size={16} />
+            {busy ? '正在建立索引' : '添加文件夹'}
           </button>
         </div>
       </form>
