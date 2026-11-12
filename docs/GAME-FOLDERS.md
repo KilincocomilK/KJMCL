@@ -37,4 +37,6 @@
 
 `tests/game-folders.test.ts` 检查原文件树不变、继承、路径替换、断盘恢复、状态迁移、去重及布局确认。`scripts/folders-desktop-smoke.mjs` 通过真实 Electron/preload 和临时 Java 程序验证原地启动、classpath、assets、共享/隔离存档、重开持久化、移除保留，以及全部导航视图。它不是实际 Minecraft、在线认证或下载源验收。
 
+已知限制：Windows JDK 21 的命令行路径受系统代码页限制（[OpenJDK 启动入口](https://github.com/openjdk/jdk21u/blob/master/src/java.base/share/native/launcher/main.c)）；英文 Windows 可能无法启动中文路径，中文 Windows 也可能无法启动含 emoji 的路径。索引本身支持这些路径，不会通过复制或改名绕过限制。本机中文目录的 JVM 测试通过，emoji 路径启动探针未通过。Windows CI 使用 ASCII 物理路径验证原地启动，中文文件索引仍由单元测试覆盖；macOS/Linux 桌面测试保留中文物理路径。不能将这些测试描述为 Windows 任意 Unicode 路径的启动验收。
+
 交互及目录概念参考用户提供的 HMCL 截图，以及 HMCL 的 [游戏文件夹配置](https://github.com/HMCL-dev/HMCL/blob/main/HMCL/src/main/java/org/jackhuang/hmcl/setting/GameDirectory.java)、[运行目录选择](https://github.com/HMCL-dev/HMCL/blob/main/HMCL/src/main/java/org/jackhuang/hmcl/game/HMCLGameRepository.java)。KJMCL 使用自己的 TypeScript 实现，未复制参考项目实现代码。

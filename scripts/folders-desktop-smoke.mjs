@@ -8,11 +8,15 @@ import AdmZip from 'adm-zip';
 import { firstVisibleWindow } from './desktop-test-utils.mjs';
 import { levelFixture } from './save-fixtures.mjs';
 const temp = await mkdtemp(path.join(os.tmpdir(), 'kjmcl-folders-desktop-'));
+// Stock Windows JDK 21 converts CLI arguments through the system code page.
+// English Windows CI cannot pass Chinese paths; retain Unicode coverage locally
+// and on macOS/Linux, and use ASCII physical paths on that CI runner only.
+const asciiPaths = process.platform === 'win32' && !!process.env.CI;
 const base = await realpath(temp),
   data = path.join(base, 'launcher'),
-  source = path.join(base, 'External 游戏');
-const sharedVersion = '共享版本',
-  isolatedVersion = '隔离版本';
+  source = path.join(base, asciiPaths ? 'External Game' : 'External 游戏');
+const sharedVersion = asciiPaths ? 'shared-version' : '共享版本',
+  isolatedVersion = asciiPaths ? 'isolated-version' : '隔离版本';
 const sharedDir = source,
   isolatedDir = path.join(source, 'versions', isolatedVersion);
 const env = { ...process.env, KJMCL_DATA_DIR: data };
