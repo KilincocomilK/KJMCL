@@ -212,7 +212,7 @@ fn external_chunks_are_read_but_not_removed() {
 #[test]
 fn locked_world_refuses_writes() {
     let d = fixture();
-    let _guard = safety::lock(d.path()).unwrap();
+    let guard = safety::lock(d.path()).unwrap();
     assert!(
         safety::edit(
             d.path(),
@@ -220,6 +220,13 @@ fn locked_world_refuses_writes() {
         )
         .is_err()
     );
+    drop(guard);
+    safety::edit(
+        d.path(),
+        &json!({"patch":{"name":"unlocked"},"transaction":"after-unlock"}),
+    )
+    .unwrap();
+    assert_eq!(world::metadata(d.path()).unwrap()["name"], "unlocked");
 }
 #[test]
 fn packed_indices_handle_padded_and_cross_word_formats() {

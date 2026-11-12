@@ -100,10 +100,13 @@ pub fn lock(root: &Path) -> Result<WorldLock> {
         .truncate(false)
         .open(p)
         .map_err(|e| format!("无法打开世界锁：{e}"))?;
-    #[cfg(windows)]
+    // Darwin's flock and POSIX record locks share a lock domain. Taking both
+    // would conflict with our own first lock; flock alone also excludes Java.
+    // https://developer.apple.com/library/archive/documentation/System/Conceptual/ManPages_iPhoneOS/man3/lockf.3.html
+    #[cfg(any(windows, target_os = "macos"))]
     fs2::FileExt::try_lock_exclusive(&f)
         .map_err(|_| "世界正在被 Minecraft 或其他编辑器使用，请关闭后再操作")?;
-    #[cfg(unix)]
+    #[cfg(all(unix, not(target_os = "macos")))]
     {
         use std::os::fd::AsRawFd;
         // Java FileChannel uses POSIX record locks. flock alone does not conflict with it.
