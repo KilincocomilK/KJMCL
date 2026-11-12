@@ -1,0 +1,337 @@
+import { useState, useEffect, type FormEvent } from 'react';
+import { Download, FolderOpen, LoaderCircle, RefreshCw, Trash2, Upload } from 'lucide-react';
+import type { Snapshot, Instance, Loader, VersionSummary } from '../../shared/types';
+import { api } from '../api';
+import { Field, Modal } from '../components';
+import { type Run, loaderLabel, date, size } from '../ui';
+import { DirectoryField, CloneDialog, PublishDialog } from './AdvancedDialogs';
+export function CreateDialog({
+  state,
+  run,
+  onClose,
+}: {
+  state: Snapshot;
+  run: Run;
+  onClose: () => void;
+}) {
+  const [versions, setVersions] = useState<VersionSummary[]>([]),
+    [version, setVersion] = useState(''),
+    [name, setName] = useState(''),
+    [loader, setLoader] = useState<Loader>('vanilla'),
+    [lv, setLv] = useState(''),
+    [loaders, setLoaders] = useState<string[]>([]),
+    [snap, setSnap] = useState(state.settings.showSnapshots),
+    [loading, setLoading] = useState(true),
+    [busy, setBusy] = useState(false),
+    [error, setError] = useState(''),
+    [gameDir, setGameDir] = useState('');
+  useEffect(() => {
+    let live = true;
+    api
+      .versions()
+      .then((v) => {
+        if (live) {
+          setVersions(v);
+          setVersion(v.find((x) => x.type === 'release')?.id ?? '');
+        }
+      })
+      .catch((e) => {
+        if (live) setError(String(e));
+      })
+      .finally(() => {
+        if (live) setLoading(false);
+      });
+    return () => {
+      live = false;
+    };
+  }, []);
+  useEffect(() => {
+    setLoaders([]);
+    setLv('');
+    if (loader === 'vanilla' || !version) return;
+    let live = true;
+    api
+      .loaders({ version, loader })
+      .then((v) => {
+        if (live) {
+          setLoaders(v);
+          setLv(v[0] ?? '');
+        }
+      })
+      .catch((e) => {
+        if (live) setError(String(e));
+      });
+    return () => {
+      live = false;
+    };
+  }, [version, loader]);
+  const submit = async (e: FormEvent, install = true) => {
+    e.preventDefault();
+    setBusy(true);
+    const id = await run(() =>
+      api.createInstance({
+        name: name.trim() || `Minecraft ${version}`,
+        version,
+        loader,
+        loaderVersion: lv || undefined,
+        gameDir: gameDir || undefined,
+      }),
+    );
+    if (id) {
+      if (install) await run(() => api.install(id));
+      onClose();
+    }
+    setBusy(false);
+  };
+  return (
+    <Modal title="新建游戏实例" onClose={onClose}>
+      <form onSubmit={(e) => void submit(e)}>
+        <div className="form-body">
+          <Field label="实例名称">
+            <input
+              placeholder={version ? `Minecraft ${version}` : '我的世界'}
+              maxLength={80}
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+            />
+          </Field>
+          <DirectoryField value={gameDir} onChange={setGameDir} />
+          <div className="row">
+            <span className="label">游戏版本</span>
+            <label className="check">
+              <input type="checkbox" checked={snap} onChange={(e) => setSnap(e.target.checked)} />
+              快照版本
+            </label>
+          </div>
+          {versions.length ? (
+            <select
+              aria-label="游戏版本"
+              value={version}
+              onChange={(e) => setVersion(e.target.value)}
+            >
+              {versions
+                .filter((v) => snap || v.type === 'release')
+                .map((v) => (
+                  <option key={v.id} value={v.id}>
+                    {v.id} · {v.type === 'release' ? '正式版' : v.type}
+                  </option>
+                ))}
+            </select>
+          ) : (
+            <input
+              required
+              aria-label="游戏版本"
+              placeholder={loading ? '正在获取版本…' : '手动输入版本，如 1.21.1'}
+              value={version}
+              onChange={(e) => setVersion(e.target.value)}
+            />
+          )}
+          {error && <p className="inline-error">版本信息暂不可用，可稍后重试或手动填写。</p>}
+          <Field label="加载器">
+            <div className="segmented">
+              {(['vanilla', 'fabric', 'quilt', 'forge', 'neoforge'] as Loader[]).map((v) => (
+                <button
+                  type="button"
+                  key={v}
+                  className={loader === v ? 'active' : ''}
+                  onClick={() => setLoader(v)}
+                >
+                  {loaderLabel[v]}
+                </button>
+              ))}
+            </div>
+          </Field>
+          {loader !== 'vanilla' && (
+            <Field label="加载器版本">
+              {loaders.length ? (
+                <select value={lv} onChange={(e) => setLv(e.target.value)}>
+                  {loaders.map((v) => (
+                    <option key={v}>{v}</option>
+                  ))}
+                </select>
+              ) : (
+                <input
+                  placeholder="自动选择最新兼容版本"
+                  value={lv}
+                  onChange={(e) => setLv(e.target.value)}
+                />
+              )}
+            </Field>
+          )}
+        </div>
+        <div className="modal-footer">
+          <button type="button" disabled={!version || busy} onClick={(e) => void submit(e, false)}>
+            仅创建
+          </button>
+          <button className="primary" disabled={!version || busy}>
+            {busy ? <LoaderCircle className="spin" size={16} /> : <Download size={16} />}创建并安装
+          </button>
+        </div>
+      </form>
+    </Modal>
+  );
+}
+
+export function EditDialog({
+  instance,
+  run,
+  onClose,
+}: {
+  instance: Instance;
+  run: Run;
+  onClose: () => void;
+}) {
+  const [i, set] = useState({ ...instance }),
+    [args, setArgs] = useState(instance.jvmArgs.join('\n')),
+    [advanced, setAdvanced] = useState<'clone' | 'publish'>();
+  if (advanced === 'clone')
+    return <CloneDialog instance={instance} run={run} onClose={() => setAdvanced(undefined)} />;
+  if (advanced === 'publish')
+    return <PublishDialog instance={instance} run={run} onClose={() => setAdvanced(undefined)} />;
+  return (
+    <Modal title="实例设置" wide onClose={onClose}>
+      <form
+        onSubmit={async (e) => {
+          e.preventDefault();
+          const result = await run(async () => {
+            await api.updateInstance({
+              ...i,
+              jvmArgs: args
+                .split('\n')
+                .map((v) => v.trim())
+                .filter(Boolean),
+            });
+            return true;
+          }, '设置已保存');
+          if (result) onClose();
+        }}
+      >
+        <div className="form-body">
+          <Field label="名称">
+            <input
+              value={i.name}
+              required
+              maxLength={80}
+              onChange={(e) => set({ ...i, name: e.target.value })}
+            />
+          </Field>
+          <div className="row">
+            <div className="path-value grow">{instance.gameDir || '默认游戏目录'}</div>
+            <button
+              type="button"
+              onClick={async () => {
+                const dir = await run(() => api.pickDirectory());
+                if (dir) {
+                  const task = await run(
+                    () => api.relocateInstance({ id: i.id, directory: dir }),
+                    '正在复制到新目录，原目录保留',
+                  );
+                  if (task) onClose();
+                }
+              }}
+            >
+              更换目录
+            </button>
+          </div>
+          <div className="row">
+            <button type="button" onClick={() => setAdvanced('clone')}>
+              克隆实例
+            </button>
+            <button type="button" onClick={() => setAdvanced('publish')}>
+              整合包发布
+            </button>
+          </div>
+          <div className="form-grid">
+            <Field label="内存（MiB）">
+              <input
+                type="number"
+                min={512}
+                max={65536}
+                step={256}
+                value={i.memoryMb}
+                onChange={(e) => set({ ...i, memoryMb: Number(e.target.value) })}
+              />
+            </Field>
+            <Field label="Java 路径">
+              <input
+                placeholder="跟随全局设置"
+                value={i.javaPath}
+                onChange={(e) => set({ ...i, javaPath: e.target.value })}
+              />
+            </Field>
+            <Field label="窗口宽度">
+              <input
+                type="number"
+                min={640}
+                max={7680}
+                value={i.width}
+                onChange={(e) => set({ ...i, width: Number(e.target.value) })}
+              />
+            </Field>
+            <Field label="窗口高度">
+              <input
+                type="number"
+                min={480}
+                max={4320}
+                value={i.height}
+                onChange={(e) => set({ ...i, height: Number(e.target.value) })}
+              />
+            </Field>
+          </div>
+          <Field label="JVM 参数" hint="每行一个参数">
+            <textarea rows={3} value={args} onChange={(e) => setArgs(e.target.value)} />
+          </Field>
+          <div className="folder-actions">
+            {(['saves', 'mods', 'resourcepacks', 'shaderpacks', 'screenshots'] as const).map(
+              (f, n) => (
+                <button
+                  type="button"
+                  key={f}
+                  onClick={() => void run(() => api.openFolder({ id: i.id, folder: f }))}
+                >
+                  <FolderOpen size={14} />
+                  {['存档', '模组', '资源包', '光影', '截图'][n]}
+                </button>
+              ),
+            )}
+          </div>
+          {i.error && <p className="inline-error">{i.error}</p>}
+          <div className="row">
+            <small>最近启动：{date(i.lastPlayed)}</small>
+            <small>累计游玩：{Math.floor(i.playTime / 60000)} 分钟</small>
+          </div>
+        </div>
+        <div className="modal-footer split">
+          <button
+            type="button"
+            className="danger text-button"
+            onClick={async () => {
+              await run(() => api.deleteInstance(i.id));
+              onClose();
+            }}
+          >
+            <Trash2 size={16} />
+            删除实例
+          </button>
+          <div className="row">
+            <button
+              type="button"
+              onClick={() => void run(() => api.exportPack(i.id), '已导出整合包')}
+            >
+              <Upload size={16} />
+              导出
+            </button>
+            <button
+              type="button"
+              onClick={() => void run(() => api.install(i.id), '已开始校验安装')}
+            >
+              <RefreshCw size={16} />
+              修复
+            </button>
+            <button className="primary">保存</button>
+          </div>
+        </div>
+      </form>
+    </Modal>
+  );
+}

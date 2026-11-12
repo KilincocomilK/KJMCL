@@ -1,0 +1,23 @@
+node_modules/
+dist/
+dist-electron/
+dist-native/
+electron/native/save-manager/target/
+release/
+coverage/
+.local/
+*.log
+SJMCL/
+.DS_Store
+Thumbs.db
+
+# Local credentials, signing material, and launcher data are never source files.
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.p12
+*.pfx
+KJMCL-data/
+kjmcl-data/

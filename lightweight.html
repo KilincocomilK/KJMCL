@@ -1,0 +1,34 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self'; connect-src 'self' ws://127.0.0.1:5173; object-src 'none'; base-uri 'none'"
+    />
+    <title>KJMCL · 轻量模式</title>
+  </head>
+  <body>
+    <header>
+      <strong><span>K</span> KJMCL</strong>
+      <div>
+        <button id="minimize" aria-label="最小化">−</button
+        ><button id="close" aria-label="关闭窗口">×</button>
+      </div>
+    </header>
+    <main>
+      <small>游戏运行中</small>
+      <h1>轻量模式</h1>
+      <p>完整界面已释放，专心享受游戏。</p>
+      <ul id="games" aria-label="运行中的游戏"></ul>
+      <p id="tasks" class="muted"></p>
+      <button id="restore" class="primary">打开完整界面</button>
+      <p class="muted">全部游戏退出后自动恢复。日志与联机保持运行。</p>
+    </main>
+    <aside id="notice" role="status" hidden>
+      <span></span><button aria-label="关闭提示">×</button>
+    </aside>
+    <script type="module" src="/src/lightweight.ts"></script>
+  </body>
+</html>

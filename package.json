@@ -1,0 +1,116 @@
+{
+  "name": "kjmcl",
+  "productName": "KJMCL",
+  "version": "0.6.1",
+  "private": true,
+  "description": "KJMC Launcher",
+  "author": "KilincocomilK",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/KilincocomilK/KJMCL.git"
+  },
+  "main": "dist-electron/main.cjs",
+  "type": "module",
+  "scripts": {
+    "dev": "node scripts/dev.mjs",
+    "build": "tsc --noEmit && vite build && node scripts/build-electron.mjs",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "pack": "npm run build && electron-builder --dir",
+    "dist": "npm run build && electron-builder",
+    "preview": "vite --host 127.0.0.1",
+    "format": "prettier --write src electron shared tests scripts *.json *.ts",
+    "test:desktop": "npm run build && node scripts/desktop-smoke.mjs && node scripts/resource-desktop-smoke.mjs && node scripts/save-desktop-smoke.mjs && node scripts/library-desktop-smoke.mjs && node scripts/lightweight-desktop-smoke.mjs",
+    "test:storage": "npm run build && node scripts/storage-smoke.mjs",
+    "test:uninstall": "npm run build && node scripts/uninstall-smoke.mjs",
+    "notices": "node scripts/notices.mjs",
+    "test:installer": "node scripts/run-forge-smoke.mjs",
+    "test:native": "cargo test --locked --manifest-path electron/native/save-manager/Cargo.toml",
+    "benchmark:saves": "node scripts/benchmark-saves.mjs"
+  },
+  "dependencies": {
+    "adm-zip": "0.6.1",
+    "lucide-react": "1.72.0",
+    "react": "19.3.1",
+    "react-dom": "19.3.1",
+    "undici": "8.12.4",
+    "yauzl": "3.4.0",
+    "yazl": "3.3.1",
+    "zod": "4.6.7"
+  },
+  "devDependencies": {
+    "@playwright/test": "1.65.0",
+    "@types/adm-zip": "0.6.0",
+    "@types/node": "26.6.6",
+    "@types/react": "19.3.0",
+    "@types/react-dom": "19.3.0",
+    "@types/yauzl": "3.4.0",
+    "@types/yazl": "3.3.1",
+    "@vitejs/plugin-react": "6.3.0",
+    "electron": "45.3.0",
+    "electron-builder": "26.18.0",
+    "esbuild": "0.28.2",
+    "prettier": "3.10.0",
+    "typescript": "7.0.2",
+    "vite": "8.3.8",
+    "vitest": "5.1.0"
+  },
+  "build": {
+    "appId": "top.kjmc.launcher",
+    "productName": "KJMCL",
+    "directories": {
+      "output": "release/${version}"
+    },
+    "files": [
+      "dist/**/*",
+      "dist-electron/**/*",
+      "package.json",
+      "build/icon.png",
+      "LICENSE",
+      "THIRD_PARTY_NOTICES.txt"
+    ],
+    "asar": true,
+    "win": {
+      "target": [
+        "nsis",
+        "portable"
+      ],
+      "icon": "build/icon.ico"
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "deleteAppDataOnUninstall": false,
+      "include": "build/installer.nsh"
+    },
+    "portable": {
+      "unpackDirName": true
+    },
+    "mac": {
+      "target": [
+        {
+          "target": "dmg"
+        }
+      ],
+      "category": "public.app-category.games",
+      "icon": "build/icon.png"
+    },
+    "linux": {
+      "target": [
+        "AppImage",
+        "deb"
+      ],
+      "category": "Game",
+      "icon": "build/icon.png"
+    },
+    "extraResources": [
+      {
+        "from": "dist-native",
+        "to": "native"
+      }
+    ],
+    "beforePack": "scripts/check-native-bundle.cjs"
+  }
+}

@@ -1,0 +1,43 @@
+{
+  "date": "2026-11-12T06:10:19.964Z",
+  "platform": "win32",
+  "arch": "x64",
+  "cpu": "12th Gen Intel(R) Core(TM) i5-12600KF",
+  "logicalCpus": 16,
+  "regions": 128,
+  "chunks": 131072,
+  "regionFileBytes": 537919488,
+  "scans": [
+    {
+      "wallMs": 37.44100000000003,
+      "nativeMs": 18.0063
+    },
+    {
+      "wallMs": 34.656799999999976,
+      "nativeMs": 18.3568
+    },
+    {
+      "wallMs": 34.08699999999999,
+      "nativeMs": 17.9827
+    },
+    {
+      "wallMs": 34.75569999999999,
+      "nativeMs": 18.814
+    },
+    {
+      "wallMs": 34.04320000000001,
+      "nativeMs": 17.7353
+    }
+  ],
+  "firstTerrain": {
+    "wallMs": 55.642699999999934,
+    "nativeMs": 35.7453,
+    "cached": false
+  },
+  "cachedTerrain": {
+    "wallMs": 22.377399999999966,
+    "nativeMs": 2.8132,
+    "cached": true
+  },
+  "scope": "Synthetic zlib single-palette sections; filesystem cache not flushed; times include separately measured native work and process wall time. Not real-world or comparative acceptance."
+}
