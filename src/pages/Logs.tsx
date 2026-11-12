@@ -76,7 +76,7 @@ export function LogPage({
         ) : (
           <div className="console-empty">
             <Terminal size={28} />
-            <p>启动游戏后，日志会显示在这里</p>
+            <p>暂无日志</p>
           </div>
         )}
       </div>

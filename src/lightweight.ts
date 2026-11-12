@@ -49,7 +49,7 @@ function render(state: LightweightState) {
   );
   document.querySelector('#tasks')!.textContent = state.tasks
     ? `${state.tasks} 个后台任务继续运行`
-    : '无后台下载任务';
+    : '';
 }
 document.querySelector<HTMLButtonElement>('#minimize')!.onclick = () =>
   void run(() => api.window('minimize'));

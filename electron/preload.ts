@@ -1,5 +1,9 @@
 import { contextBridge, ipcRenderer, webUtils } from 'electron';
 const methods = [
+  'backgroundImage',
+  'pickBackground',
+  'resetBackground',
+  'updateAppearance',
   'organizeInstance',
   'catalogSearch',
   'catalogVersions',

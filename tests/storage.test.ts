@@ -60,6 +60,17 @@ async function fixture() {
 afterEach(async () => {
   for (const root of roots.splice(0)) await rm(root, { recursive: true, force: true });
 });
+it('migrates managed backgrounds and schema backups with the data directory', async () => {
+  const { store, storage, target } = await fixture();
+  await mkdir(path.join(store.root, 'appearance'));
+  await writeFile(path.join(store.root, 'appearance', 'background.png'), 'managed-image');
+  await writeFile(path.join(store.root, 'state.json.v6.bak'), 'state-backup');
+  await storage.migrate(store, target, ctx());
+  expect(await readFile(path.join(target, 'appearance', 'background.png'), 'utf8')).toBe(
+    'managed-image',
+  );
+  expect(await readFile(path.join(target, 'state.json.v6.bak'), 'utf8')).toBe('state-backup');
+});
 it('rejects migrating launcher data anywhere inside an indexed game folder with isolated versions', async () => {
   const { base, store, storage } = await fixture();
   const source = path.join(base, 'indexed-games');

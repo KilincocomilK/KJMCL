@@ -1,3 +1,4 @@
+import { Select } from '../Select';
 import { useState, useEffect, useRef, type ReactNode } from 'react';
 import { Download, LoaderCircle, Puzzle, Search, X } from 'lucide-react';
 import type { Snapshot, ModFile, ModProject, ResourceFile } from '../../shared/types';
@@ -142,7 +143,7 @@ export function ModResources({
             </button>
           )}
         </div>
-        <select
+        <Select
           aria-label="模组来源"
           value={source}
           onChange={(e) => {
@@ -152,7 +153,7 @@ export function ModResources({
         >
           <option value="modrinth">Modrinth</option>
           <option value="curseforge">CurseForge</option>
-        </select>
+        </Select>
         <button className="primary" disabled={loading}>
           {loading ? <LoaderCircle className="spin" size={16} /> : <Search size={16} />}搜索
         </button>

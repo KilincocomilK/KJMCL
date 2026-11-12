@@ -1,3 +1,23 @@
+# 0.7.2 界面与背景验证
+
+日期：2026-11-13（Asia/Shanghai），Windows x64、Electron 45.3.0、JDK 21。
+
+- 本轮界面代码的 `npm run typecheck`、`npm test`（11 个文件，127 项测试）、`npm run build` 通过。
+- `npm run test:desktop` 的 8 组脚本通过：桌面基础、资源、存档、实例库、轻量模式、游戏文件夹、模组资源、外观。背景、预加载接口、状态持久化和现有 UI 流程均在实际 Electron 中操作；JVM 启动使用测试类。
+- 新增外观验证覆盖悬浮导航与毛玻璃样式、首页冗余文本移除、960×650 窗口及各页水平溢出、下拉框 Home / End / Enter / Escape 和外部点击、字段标签点击、弹窗内首次 Escape 仅关闭菜单。
+- 通过实际原生图片解码导入本地 PNG 和 JPEG，验证无效图片拒绝、取消保留原背景、删除源图后受管副本仍可用、暗度/模糊键盘调整、退出重开后背景与设置保留、恢复默认后再次重开。文件选择对话框由测试提供隔离路径。
+- 发布前格式检查确认当前 Windows 内置图片解码器不能读取 WebP，因此背景入口仅支持已实测的 PNG / JPEG；WebP 在输入检查阶段、原生解码之前拒绝。
+- 单元测试覆盖输入字节/像素上限、无效解码、写入失败回退、受管图片丢失时保留偏好、缩放、IPC 路径拒绝、v5 → v6 原始备份，以及账户、游戏文件夹、外部实例和选中项保留。数据迁移包含受管 `appearance/` 目录。
+- 本地截图位于忽略目录 `.local/appearance-home-default.png`、`appearance-dropdown.png`、`appearance-settings.png`、`appearance-home-custom.png`、`appearance-home-compact.png`；其中测试实例和棋盘背景均为临时数据，不进入生产状态或发行包。
+
+- 使用本机匹配的 Electron 45.3.0 分发目录构建 Windows x64 NSIS 安装版与便携版，输出到 `release/0.7.2/`；`win-unpacked/KJMCL.exe` 再次通过全部 8 组桌面 smoke 脚本。检查了包内 `app.asar` 元数据及 Windows PE 文件版本，均为 0.7.2。
+- 实际 `KJMCL 0.7.2.exe` 便携文件通过隔离存储测试：外层 EXE 旁置数据、迁移后新 PID 重启、账户保留、旧包装进程退出及界面重新加载。测试没有操作现有玩家数据。
+- 发行归档排除了 `SJMCL/`、玩家数据、`.env` 和 `.local/`；两份 EXE 的 Windows 签名检查均为 `NotSigned`。发布附件为安装 EXE、便携 EXE、安装包 blockmap 和 `SHA256SUMS.txt`，不包含解包目录或运行产生的数据。
+
+构建未配置代码签名证书，签名步骤跳过，Windows 产物未签名。打包应用和便携文件验收不等于系统级安装器验收；本轮未进行真实 Minecraft/在线账户/下载源验收、Windows 系统级安装卸载或 macOS/Linux 实机验收。
+
+---
+
 > 2026-11-12 本机清理：按用户要求删除了 `.local/` 中的临时截图、日志和测试副本，以及旧版解包目录、失败构建和开发缓存。下文保留当时的验证结果，所列临时证据文件已清理；各版本发行包与校验文件归档在 `release/<版本>/`，当前 `0.3.1/win-unpacked` 保留。
 
 # 0.3.1 数据目录与卸载验证

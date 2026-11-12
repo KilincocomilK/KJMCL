@@ -48,18 +48,22 @@
   display: flex;
   align-items: center;
   gap: 10px;
-  flex: none;
+  flex: 0 1 340px;
+  min-width: 0;
+  max-width: 100%;
   padding-bottom: 8px;
   color: #74736f;
   font-size: 11px;
   letter-spacing: 0.5px;
   white-space: nowrap;
 }
-.workspace-instance > span {
+.workspace-instance > span:not(.launcher-select) {
   flex-shrink: 0;
 }
 .workspace-instance .instance-select {
-  min-width: 190px;
+  flex: 1 1 190px;
+  min-width: 0;
+  width: 280px;
   max-width: 280px;
 }
 .workspace-panel {

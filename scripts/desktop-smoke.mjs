@@ -1,4 +1,8 @@
-import { firstVisibleWindow, navigateWorkspace } from './desktop-test-utils.mjs';
+import {
+  firstVisibleWindow,
+  navigateWorkspace,
+  selectLauncherOption,
+} from './desktop-test-utils.mjs';
 import { _electron as electron, expect } from '@playwright/test';
 import { mkdtemp, mkdir, writeFile, readFile, rm, readdir } from 'node:fs/promises';
 import os from 'node:os';
@@ -67,7 +71,7 @@ try {
   await expect(page.getByText('sample mod.jar', { exact: true })).toBeVisible();
   await page.getByRole('switch').click();
   await expect(page.getByRole('switch')).toHaveAttribute('aria-checked', 'false');
-  await page.getByRole('combobox', { name: '模组来源' }).selectOption('curseforge');
+  await selectLauncherOption(page, '模组来源', 'curseforge');
   await expect(page.getByLabel('搜索模组', { exact: true })).toBeVisible();
   await mkdir(path.join(dir, 'saves/Smoke World'), { recursive: true });
   await writeFile(path.join(dir, 'saves/Smoke World/level.dat'), 'world fixture');
@@ -148,7 +152,14 @@ try {
   await writeFile(skinPath, Buffer.from(png, 'base64'));
   await page.getByRole('button', { name: '选择皮肤', exact: true }).click();
   await expect(page.getByLabel('皮肤正面预览')).toBeVisible();
-  await page.getByLabel('模型', { exact: true }).selectOption('slim');
+  const modelSelect = page.getByRole('combobox', { name: '模型', exact: true });
+  await modelSelect.focus();
+  await modelSelect.press('Space');
+  await expect(page.getByRole('listbox')).toBeVisible();
+  await modelSelect.press('Escape');
+  await expect(page.getByRole('dialog', { name: 'KJMC_Tester · 皮肤' })).toBeVisible();
+  await expect(modelSelect).toHaveAttribute('aria-expanded', 'false');
+  await selectLauncherOption(page, '模型', 'slim');
   await page.screenshot({ path: '.local/skin-v2.png' });
   await app.evaluate(({ dialog }) => {
     dialog.showOpenDialog = globalThis.originalOpenDialog;
@@ -273,9 +284,9 @@ try {
     const second = await firstVisibleWindow(app);
     await second.waitForSelector('h1');
     await navigateWorkspace(second, '性能与诊断');
-    await second.getByLabel('内存分配', { exact: true }).selectOption('auto');
+    await selectLauncherOption(second, '内存分配', 'auto');
     await second.getByLabel('堆内存上限', { exact: true }).fill('1024');
-    await second.getByLabel('垃圾收集器', { exact: true }).selectOption('g1');
+    await selectLauncherOption(second, '垃圾收集器', 'g1');
     await second.getByLabel('记录 GC 停顿', { exact: true }).check();
     await second.getByRole('button', { name: '保存', exact: true }).click();
     await expect(second.getByRole('button', { name: '保存', exact: true })).toBeDisabled();

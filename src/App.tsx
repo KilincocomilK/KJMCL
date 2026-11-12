@@ -4,30 +4,26 @@ import { StorageSetup } from './pages/Storage';
 import { SettingsPage } from './pages/Settings';
 import { MultiplayerPage } from './pages/Multiplayer';
 import { ResourceImport } from './dialogs/ResourceImport';
-import { LibraryPage, InstanceCard } from './pages/Library';
+import { LibraryPage } from './pages/Library';
+import { HomePage } from './pages/Home';
 import type { ResourceCandidate } from '../shared/types';
 import { CreateDialog, EditDialog } from './dialogs/InstanceDialogs';
-import { type Run, loaderLabel, statusLabel, date } from './ui';
+import { type Run } from './ui';
 import { useCallback, useEffect, useState } from 'react';
 import {
-  ArrowRight,
   Activity,
   Archive,
   FolderOpen,
   ArrowUpRight,
-  Box,
   Check,
   ChevronRight,
-  Clock,
   Download,
   Home,
   Layers,
   LoaderCircle,
   Minus,
-  Play,
   Plus,
   Settings2,
-  SlidersHorizontal,
   Square,
   Upload,
   UserRound,
@@ -36,7 +32,8 @@ import {
 } from 'lucide-react';
 import type { Snapshot, Instance } from '../shared/types';
 import { api } from './api';
-import { Brand, Empty, Terrain } from './components';
+import { Brand, Empty } from './components';
+import { Background } from './Background';
 import {
   ConsolidatedWorkspace,
   defaultWorkspaceTab,
@@ -124,9 +121,7 @@ export function App() {
         <p>{error || '正在启动'}</p>
       </div>
     );
-  const active = state.instances.find((i) => i.id === state.selectedInstanceId),
-    account = state.accounts.find((a) => a.id === state.selectedAccountId),
-    running = active && state.running.includes(active.id),
+  const account = state.accounts.find((a) => a.id === state.selectedAccountId),
     pending = state.tasks.filter((t) => t.status === 'running');
   const nav: [Page, typeof Home, string][] = [
     ['home', Home, '开始游戏'],
@@ -137,9 +132,9 @@ export function App() {
     ['diagnostics', Activity, '诊断与维护'],
     ['downloads', Download, '下载任务'],
   ];
-  const launch = () => (active ? run(() => api.launch(active.id)) : setCreate(true));
   return (
-    <div className="app-shell">
+    <div className={'app-shell ' + (page === 'home' ? 'is-home' : '')}>
+      <Background state={state} />
       <ResourceImport state={state} run={run} files={resourceFiles} onFiles={setResourceFiles} />
       {state.storage?.setupRequired && <StorageSetup state={state} run={run} />}
       <aside className="sidebar">
@@ -147,10 +142,8 @@ export function App() {
           <Brand />
           <div>
             <strong>KJMCL</strong>
-            <small>KJMC LAUNCHER</small>
           </div>
         </div>
-        <div className="nav-caption">工作空间</div>
         <nav aria-label="工作空间">
           {nav.map(([key, Icon, label]) => (
             <button
@@ -163,9 +156,7 @@ export function App() {
               <span>{label}</span>
               {key === 'downloads' && pending.length > 0 ? (
                 <b className="count">{pending.length}</b>
-              ) : (
-                key === 'home' && <ChevronRight size={14} />
-              )}
+              ) : null}
             </button>
           ))}
         </nav>
@@ -189,29 +180,13 @@ export function App() {
             </span>
             <span>
               <strong>{account?.name ?? '添加账户'}</strong>
-              <small>
-                {account
-                  ? account.kind === 'microsoft'
-                    ? 'Microsoft 账户'
-                    : account.kind === 'yggdrasil'
-                      ? '第三方账户'
-                      : '离线账户'
-                  : '未登录'}
-              </small>
             </span>
             <ChevronRight size={15} />
           </button>
         </div>
-        <div className="sidebar-version">
-          <i />
-          KJMCL <span>{state.appVersion}</span>
-        </div>
       </aside>
       <div className="main-shell">
         <header className="titlebar">
-          <span>
-            KJMC <span className="slash">/</span> {page === 'settings' ? '设置' : pageLabels[page]}
-          </span>
           <div className="window-actions">
             <button aria-label="最小化" onClick={() => void run(() => api.window('minimize'))}>
               <Minus size={15} />
@@ -228,7 +203,7 @@ export function App() {
             </button>
           </div>
         </header>
-        <main>
+        <main className={page === 'home' ? 'home-main' : undefined}>
           <div className="page-head">
             <div>
               <h1>{pageLabels[page]}</h1>
@@ -257,170 +232,14 @@ export function App() {
             </div>
           </div>
           {page === 'home' && (
-            <>
-              <section className="hero">
-                <Terrain />
-                <div className="hero-content">
-                  <div className="hero-tag">
-                    <span />
-                    MINECRAFT JAVA EDITION
-                  </div>
-                  <h2>
-                    {active?.name ?? 'Minecraft'}
-                    <span>_</span>
-                  </h2>
-                  <div className="hero-meta">
-                    {active ? (
-                      <>
-                        <span>{active.version}</span>
-                        <i />
-                        <span>{loaderLabel[active.loader]}</span>
-                      </>
-                    ) : (
-                      <span>Java Edition</span>
-                    )}
-                  </div>
-                  <button
-                    className="primary hero-button"
-                    disabled={
-                      !!running ||
-                      (!!active &&
-                        (active.status === 'installing' || (active.status === 'ready' && !account)))
-                    }
-                    onClick={() =>
-                      active
-                        ? active.status === 'ready'
-                          ? launch()
-                          : void run(async () => {
-                              if (active.external)
-                                await api.refreshGameFolder(active.external.folderId);
-                              else await api.install(active.id);
-                            })
-                        : setCreate(true)
-                    }
-                  >
-                    {running ? (
-                      <Square size={18} />
-                    ) : active && active.status !== 'ready' ? (
-                      <Download size={20} />
-                    ) : (
-                      <Play size={20} fill="currentColor" />
-                    )}
-                    {running
-                      ? '游戏运行中'
-                      : !active
-                        ? '创建游戏实例'
-                        : active.status === 'ready'
-                          ? '启动游戏'
-                          : active.external
-                            ? '刷新版本索引'
-                            : '安装游戏'}
-                    <ArrowRight size={19} />
-                  </button>
-                  {running && active && (
-                    <button
-                      className="text-button"
-                      onClick={() => void run(() => api.stop(active.id))}
-                    >
-                      <Square size={14} />
-                      结束游戏
-                    </button>
-                  )}
-                  {active?.status === 'ready' && !account && (
-                    <button className="hero-account" onClick={() => navigate('accounts')}>
-                      添加账户以启动 <ArrowRight size={14} />
-                    </button>
-                  )}
-                </div>
-                <div className="hero-corner">
-                  KJMC<span>01 / JAVA</span>
-                </div>
-              </section>
-              <section className="launch-strip">
-                <div className="instance-symbol">
-                  <Box size={25} />
-                </div>
-                <div>
-                  <small>当前实例</small>
-                  <select
-                    aria-label="当前游戏实例"
-                    value={active?.id ?? ''}
-                    onChange={(e) => void run(() => api.select({ instanceId: e.target.value }))}
-                  >
-                    <option value="" disabled>
-                      尚未创建实例
-                    </option>
-                    {state.instances.map((i) => (
-                      <option value={i.id} key={i.id}>
-                        {i.name}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-                <span className={'status ' + (active?.status === 'ready' ? 'green' : '')}>
-                  {active ? statusLabel[active.status] : '等待创建'}
-                </span>
-                <div className="strip-spacer" />
-                <div className="strip-stat">
-                  <small>内存分配</small>
-                  <strong>
-                    {((active?.memoryMb ?? state.settings.memoryMb) / 1024).toFixed(1)}{' '}
-                    <span>GB</span>
-                  </strong>
-                </div>
-                <button
-                  className="icon"
-                  disabled={!active}
-                  aria-label="实例设置"
-                  onClick={() => setEditing(active)}
-                >
-                  <SlidersHorizontal size={19} />
-                </button>
-              </section>
-              <div className="section-head">
-                <h2>
-                  我的实例 <span>{state.instances.length.toString().padStart(2, '0')}</span>
-                </h2>
-                <button className="text-button" onClick={() => navigate('instances')}>
-                  查看全部
-                  <ArrowRight size={16} />
-                </button>
-              </div>
-              <div className="instance-grid home-grid">
-                {state.instances
-                  .slice()
-                  .sort(
-                    (a, b) =>
-                      Number(b.organization?.favorite ?? false) -
-                        Number(a.organization?.favorite ?? false) ||
-                      (b.lastPlayed ?? 0) - (a.lastPlayed ?? 0),
-                  )
-                  .slice(0, 2)
-                  .map((i) => (
-                    <InstanceCard
-                      key={i.id}
-                      i={i}
-                      state={state}
-                      run={run}
-                      onEdit={() => setEditing(i)}
-                    />
-                  ))}
-                <button className="new-card" onClick={() => setCreate(true)}>
-                  <span>
-                    <Plus size={24} />
-                  </span>
-                  <strong>新建游戏实例</strong>
-                  <small>原版 · Fabric · Quilt</small>
-                </button>
-              </div>
-              <div className="home-footer">
-                <span>
-                  <Clock size={11} />
-                  最近启动：{date(active?.lastPlayed)}
-                </span>
-                <span>WINDOWS / macOS / LINUX</span>
-              </div>
-            </>
+            <HomePage
+              state={state}
+              run={run}
+              onCreate={() => setCreate(true)}
+              onEdit={setEditing}
+              onAccounts={() => navigate('accounts')}
+              onLibrary={() => navigate('instances')}
+            />
           )}
           {page === 'instances' && <LibraryPage state={state} run={run} onEdit={setEditing} />}
           {page === 'resources' && (
@@ -490,37 +309,26 @@ export function App() {
                 ))}
               </div>
             ) : (
-              <Empty title="没有下载任务" description="安装进度会显示在这里" />
+              <Empty title="没有下载任务" />
             ))}
           {page === 'settings' && (
             <SettingsPage key={JSON.stringify(state.settings)} state={state} run={run} />
           )}
         </main>
-        <footer className="statusbar">
-          {state.running.length > 0 && (
-            <button onClick={() => void run(() => api.setLightweight(true))}>进入轻量模式</button>
-          )}
-          <span>
-            <i className={pending.length ? 'busy' : ''} />
-            {pending.length
-              ? `${pending.length} 个任务进行中`
-              : state.running.length
-                ? '游戏运行中'
-                : '就绪'}
-          </span>
-          <button onClick={() => navigate('downloads')}>
-            {pending[0] ? (
-              <>
-                {pending[0].detail}
-                <span>{Math.floor(pending[0].progress)}%</span>
-              </>
-            ) : (
-              <>
-                JAVA EDITION <span>·</span> KJMCL
-              </>
+        {(pending.length > 0 || state.running.length > 0) && (
+          <footer className="statusbar">
+            {state.running.length > 0 && (
+              <button onClick={() => void run(() => api.setLightweight(true))}>进入轻量模式</button>
             )}
-          </button>
-        </footer>
+            {pending[0] && (
+              <button onClick={() => navigate('downloads')}>
+                <LoaderCircle size={12} className="spin" />
+                <span>{pending[0].title}</span>
+                <span>{Math.floor(pending[0].progress)}%</span>
+              </button>
+            )}
+          </footer>
+        )}
       </div>
       {create && <CreateDialog state={state} run={run} onClose={() => setCreate(false)} />}
       {editing && <EditDialog instance={editing} run={run} onClose={() => setEditing(undefined)} />}

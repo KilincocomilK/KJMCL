@@ -1,3 +1,4 @@
+import { Select } from '../Select';
 import { useState } from 'react';
 import {
   ArrowRight,
@@ -54,7 +55,13 @@ export function InstanceCard({
         {loaderLabel[i.loader]} {i.loaderVersion ?? ''}
       </div>
       <div className="card-bottom">
-        <span>{state.running.includes(i.id) ? '运行中' : statusLabel[i.status]}</span>
+        <span>
+          {state.running.includes(i.id)
+            ? '运行中'
+            : i.status !== 'ready'
+              ? statusLabel[i.status]
+              : null}
+        </span>
         <button
           className="text-button"
           onClick={() => void run(() => api.select({ instanceId: i.id }), '已选择 ' + i.name)}
@@ -191,18 +198,18 @@ export function LibraryPage({
             value={query}
             onChange={(e) => setQuery(e.target.value)}
           />
-          <select aria-label="实例分组" value={group} onChange={(e) => setGroup(e.target.value)}>
+          <Select aria-label="实例分组" value={group} onChange={(e) => setGroup(e.target.value)}>
             <option value="">全部分组</option>
             {groups.map((g) => (
               <option key={g}>{g}</option>
             ))}
-          </select>
-          <select aria-label="实例排序" value={sort} onChange={(e) => setSort(e.target.value)}>
+          </Select>
+          <Select aria-label="实例排序" value={sort} onChange={(e) => setSort(e.target.value)}>
             <option value="recent">最近游玩</option>
             <option value="name">名称</option>
             <option value="time">游玩时长</option>
             <option value="created">创建时间</option>
-          </select>
+          </Select>
           <button aria-pressed={favorites} onClick={() => setFavorites(!favorites)}>
             <Star size={16} />
             只看收藏
@@ -295,7 +302,13 @@ export function LibraryPage({
                 <p className="library-note">{i.organization.notes}</p>
               )}
               <div className="card-bottom">
-                <span>{state.running.includes(i.id) ? '运行中' : statusLabel[i.status]}</span>
+                <span>
+                  {state.running.includes(i.id)
+                    ? '运行中'
+                    : i.status !== 'ready'
+                      ? statusLabel[i.status]
+                      : null}
+                </span>
                 <button
                   className="text-button"
                   onClick={() =>

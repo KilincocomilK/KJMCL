@@ -32,3 +32,17 @@ export async function firstVisibleWindow(app) {
   );
   return page;
 }
+
+/** Exercise the visible launcher dropdown rather than its hidden form control. */
+export async function selectLauncherOption(page, name, value) {
+  const trigger = page.getByRole('combobox', { name, exact: true });
+  await trigger.click();
+  const options = page.getByRole('listbox').getByRole('option');
+  const index = await options.evaluateAll(
+    (nodes, selected) => nodes.findIndex((node) => node.dataset.value === selected),
+    String(value),
+  );
+  expect(index, `Dropdown ${name} contains value ${value}`).toBeGreaterThanOrEqual(0);
+  await options.nth(index).click();
+  await expect(trigger).toHaveAttribute('aria-expanded', 'false');
+}

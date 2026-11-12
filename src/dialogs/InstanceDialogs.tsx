@@ -1,3 +1,4 @@
+import { Select } from '../Select';
 import { useState, useEffect, type FormEvent } from 'react';
 import { Download, FolderOpen, LoaderCircle, RefreshCw, Trash2, Upload } from 'lucide-react';
 import type { Snapshot, Instance, Loader, VersionSummary } from '../../shared/types';
@@ -104,7 +105,7 @@ export function CreateDialog({
             </label>
           </div>
           {versions.length ? (
-            <select
+            <Select
               aria-label="游戏版本"
               value={version}
               onChange={(e) => setVersion(e.target.value)}
@@ -116,7 +117,7 @@ export function CreateDialog({
                     {v.id} · {v.type === 'release' ? '正式版' : v.type}
                   </option>
                 ))}
-            </select>
+            </Select>
           ) : (
             <input
               required
@@ -144,11 +145,11 @@ export function CreateDialog({
           {loader !== 'vanilla' && (
             <Field label="加载器版本">
               {loaders.length ? (
-                <select value={lv} onChange={(e) => setLv(e.target.value)}>
+                <Select value={lv} onChange={(e) => setLv(e.target.value)}>
                   {loaders.map((v) => (
                     <option key={v}>{v}</option>
                   ))}
-                </select>
+                </Select>
               ) : (
                 <input
                   placeholder="自动选择最新兼容版本"
@@ -239,7 +240,7 @@ export function EditDialog({
           </div>
           {i.external && (
             <Field label="运行位置">
-              <select
+              <Select
                 value={i.external.layout}
                 onChange={(e) =>
                   set({
@@ -254,7 +255,7 @@ export function EditDialog({
                 <option value="auto">沿用原配置 / 自动识别</option>
                 <option value="shared">共享游戏文件夹</option>
                 <option value="version">版本独立目录</option>
-              </select>
+              </Select>
               <small>只改变运行位置的索引，不搬动游戏或存档。</small>
               <button
                 type="button"

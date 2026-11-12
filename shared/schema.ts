@@ -63,6 +63,15 @@ export const settingsSchema = z.object({
   instancesDir: directory.optional(),
   backupBeforeLaunch: z.boolean().optional(),
 });
+export const appearanceControlsSchema = z
+  .object({
+    dim: z.number().int().min(0).max(80),
+    blur: z.number().int().min(0).max(24),
+  })
+  .strict();
+export const appearanceSchema = appearanceControlsSchema.extend({
+  backgroundId: z.uuid().optional(),
+});
 export const instanceSchema = z.object({
   id,
   name: z.string().trim().min(1).max(80),
@@ -120,6 +129,10 @@ const regionRef = worldRef.extend({
   rz: z.number().int().min(-60000).max(60000),
 });
 export const schemas = {
+  backgroundImage: none,
+  pickBackground: none,
+  resetBackground: none,
+  updateAppearance: appearanceControlsSchema,
   organizeInstance: z.object({ id, organization: organizationSchema }),
   catalogSearch: contentRefSchema.omit({ projectId: true }).extend({
     id,

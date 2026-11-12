@@ -1,4 +1,8 @@
-import { firstVisibleWindow, navigateWorkspace } from './desktop-test-utils.mjs';
+import {
+  firstVisibleWindow,
+  navigateWorkspace,
+  selectLauncherOption,
+} from './desktop-test-utils.mjs';
 import { _electron as electron, expect } from '@playwright/test';
 import { mkdtemp, mkdir, writeFile, readFile, rm, utimes, readdir } from 'node:fs/promises';
 import path from 'node:path';
@@ -77,7 +81,7 @@ try {
   await page.getByLabel('实例备注').fill('桌面验证备注');
   await page.getByRole('button', { name: '保存整理', exact: true }).click();
   await page.getByLabel('收藏 建筑测试', { exact: true }).click();
-  await page.getByLabel('实例分组').selectOption('建筑');
+  await selectLauncherOption(page, '实例分组', '建筑');
   await page.getByLabel('切换实例视图').click();
   await expect(page.getByText('桌面验证备注', { exact: true })).toBeVisible();
   await mkdir('.local', { recursive: true });

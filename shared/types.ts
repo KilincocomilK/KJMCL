@@ -176,6 +176,11 @@ export interface Settings {
   instancesDir?: string;
   backupBeforeLaunch?: boolean;
 }
+export interface Appearance {
+  backgroundId?: string;
+  dim: number;
+  blur: number;
+}
 export interface Task {
   id: string;
   title: string;
@@ -217,6 +222,7 @@ export interface VersionSummary {
   sha1?: string;
 }
 export interface Snapshot {
+  appearance?: Appearance;
   gameFolders: GameFolder[];
   selectedGameFolderId?: string;
   favorites?: ContentFavorite[];
@@ -417,6 +423,10 @@ export interface Api {
   cleanupStorage(): Promise<string | null>;
   restartLauncher(): Promise<void>;
   snapshot(): Promise<Snapshot>;
+  backgroundImage(): Promise<string | null>;
+  pickBackground(): Promise<void>;
+  resetBackground(): Promise<void>;
+  updateAppearance(value: Pick<Appearance, 'dim' | 'blur'>): Promise<void>;
   lightweightState(): Promise<LightweightState>;
   setLightweight(active: boolean): Promise<void>;
   settings(value: Settings): Promise<void>;

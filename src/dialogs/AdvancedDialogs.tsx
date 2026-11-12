@@ -1,3 +1,4 @@
+import { Select } from '../Select';
 import { useEffect, useRef, useState } from 'react';
 import { Copy, FolderOpen, Upload, Download, RefreshCw, ArrowUpRight } from 'lucide-react';
 import type { Account, Instance, MinecraftScan, PackReview, GameLayout } from '../../shared/types';
@@ -96,7 +97,7 @@ export function ImportDialog({
             {scan.versions.map((v) => (
               <div className="folder-import-version" key={v.id}>
                 <strong>{v.name}</strong>
-                <select
+                <Select
                   aria-label={'运行目录 · ' + v.id}
                   value={layouts[v.id]}
                   onChange={(e) => setLayouts({ ...layouts, [v.id]: e.target.value as GameLayout })}
@@ -104,7 +105,7 @@ export function ImportDialog({
                   <option value="auto">沿用原配置 / 自动识别</option>
                   <option value="shared">共享游戏文件夹</option>
                   <option value="version">版本独立目录</option>
-                </select>
+                </Select>
                 <small className="path-value">
                   {layouts[v.id] === 'shared'
                     ? scan.root
@@ -207,10 +208,10 @@ export function PublishDialog({
           <>
             <div className="form-grid">
               <Field label="格式">
-                <select value={format} onChange={(e) => setFormat(e.target.value as typeof format)}>
+                <Select value={format} onChange={(e) => setFormat(e.target.value as typeof format)}>
                   <option value="mrpack">Modrinth .mrpack</option>
                   <option value="curseforge">CurseForge .zip</option>
-                </select>
+                </Select>
               </Field>
               <Field label="版本号">
                 <input
@@ -273,14 +274,14 @@ export function PublishDialog({
                 </Field>
                 <div className="form-grid">
                   <Field label="渠道">
-                    <select
+                    <Select
                       value={channel}
                       onChange={(e) => setChannel(e.target.value as typeof channel)}
                     >
                       <option>release</option>
                       <option>beta</option>
                       <option>alpha</option>
-                    </select>
+                    </Select>
                   </Field>
                   <Field label="更新日志">
                     <textarea value={changelog} onChange={(e) => setChangelog(e.target.value)} />
@@ -403,14 +404,14 @@ export function SkinDialog({
           <small>离线账户仅保存本地预览，不修改游戏或服务器皮肤。</small>
         )}
         <Field label="模型">
-          <select
+          <Select
             aria-label="模型"
             value={variant}
             onChange={(e) => setVariant(e.target.value as typeof variant)}
           >
             <option value="classic">经典</option>
             <option value="slim">纤细</option>
-          </select>
+          </Select>
         </Field>
         <div className="row">
           <button disabled={busy} onClick={() => void refresh()}>

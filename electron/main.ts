@@ -15,10 +15,11 @@ import { Catalog } from './core/catalog';
 import { ModAudit } from './core/mod-audit';
 import { DiskUsage } from './core/disk-usage';
 import { CrashReports } from './core/crash-reports';
+import { AppearanceManager } from './core/appearance';
 import { privateValues } from './core/private-values';
 import { LightweightMode } from './core/lightweight';
 import { WindowHost } from './window-host';
-import { app, BrowserWindow, ipcMain, dialog, shell } from 'electron';
+import { app, BrowserWindow, ipcMain, dialog, shell, nativeImage } from 'electron';
 import path from 'node:path';
 import os from 'node:os';
 import { mkdir, writeFile, copyFile } from 'node:fs/promises';
@@ -124,6 +125,7 @@ app
         );
     };
     const store = new Store(layout.root),
+      appearance = new AppearanceManager(store, (data) => nativeImage.createFromBuffer(data)),
       tasks = new Tasks(changed),
       net = new Network(() => store.data.settings),
       mc = new Minecraft(store, net),
@@ -315,6 +317,26 @@ app
         storage: await storage.info(),
       }),
       lightweightState: async () => lightState(),
+      backgroundImage: async () => appearance.image(),
+      pickBackground: async () => {
+        if (!window) return;
+        const result = await dialog.showOpenDialog(window, {
+          title: '选择背景图片',
+          properties: ['openFile'],
+          filters: [{ name: '图片', extensions: ['png', 'jpg', 'jpeg'] }],
+        });
+        if (result.canceled || !result.filePaths[0]) return;
+        await appearance.import(result.filePaths[0]);
+        changed();
+      },
+      resetBackground: async () => {
+        await appearance.reset();
+        changed();
+      },
+      updateAppearance: async (value) => {
+        appearance.update(value);
+        changed();
+      },
       setLightweight: async (active) => lightweight?.request(active),
       settings: async (value) => {
         store.data.settings = value;
@@ -599,6 +621,7 @@ app
     const lightMethods = new Set(['lightweightState', 'setLightweight', 'stop', 'window']);
     const storageReadOnly = new Set([
       'snapshot',
+      'backgroundImage',
       'lightweightState',
       'setLightweight',
       'logs',

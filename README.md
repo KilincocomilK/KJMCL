@@ -1,6 +1,6 @@
 # KJMCL
 
-Minecraft Java 版桌面启动器，开发版 **0.7.1**。Electron + React + TypeScript，存档引擎使用 Rust，面向 Windows、macOS 和 Linux。
+Minecraft Java 版桌面启动器，开发版 **0.7.2**。Electron + React + TypeScript，存档引擎使用 Rust，面向 Windows、macOS 和 Linux。
 
 作者：[KilincocomilK](https://github.com/KilincocomilK)。项目仓库：[KilincocomilK/KJMCL](https://github.com/KilincocomilK/KJMCL)，目前保持私有。
 
@@ -36,6 +36,7 @@ npm run dist      # 当前平台的安装包，输出到 release/<版本>/
 
 | 模块 | 已实现 |
 | --- | --- |
+| 外观 | 黑橙直角毛玻璃界面、悬浮侧栏、简洁首页、自定义 PNG / JPEG 背景、暗度与模糊调整、键盘可操作的统一下拉菜单 |
 | 账户 | 离线 / Microsoft / 第三方 Yggdrasil；设备码授权、角色选择、令牌验证和刷新、系统加密存储 |
 | 版本 | 官方版本列表、快照开关、原版 / Fabric / Quilt / Forge / NeoForge、版本继承、完整资源安装与哈希校验、修复 |
 | 实例 | 游戏文件夹 → 版本两层管理、外部目录原地索引与刷新、共享 / 版本隔离运行；受管实例支持克隆和目录迁移；内存 / Java / 参数 / 分辨率 |
@@ -64,7 +65,8 @@ npm run dist      # 当前平台的安装包，输出到 release/<版本>/
 2. 新建游戏实例，或在“游戏实例 → 添加游戏文件夹”选择已有 `.minecraft`。确认各版本的运行位置后添加；游戏文件和存档保持原位，不复制到启动器目录。
 3. 在“设置”检测 Java；必要时安装游戏要求的版本。实例设置可覆盖全局 Java。
 4. 在“资源管理”选择实例，直接搜索和安装模组，或切换光影、资源包、录像、原理图分类。CurseForge 需要在设置中保存 API Key。
-5. 返回首页选择版本并启动。“存档管理”集中提供世界编辑与备份；“诊断与维护”集中提供性能、日志、崩溃报告及磁盘管理。
+5. 在“启动器设置 → 外观”选择本地背景图片，调节暗度和模糊；恢复默认可移除自定义背景。
+6. 返回首页选择版本并启动。“存档管理”集中提供世界编辑与备份；“诊断与维护”集中提供性能、日志、崩溃报告及磁盘管理。
 
 外部文件夹可刷新版本、调整运行位置识别方式、移除索引；移除索引不删除游戏。外部版本的核心安装和修复仍由原启动器负责。旧版已经复制的实例会继续保留，不会自动删除或切回原目录。详细行为见 [游戏文件夹索引](docs/GAME-FOLDERS.md)。
 
@@ -79,12 +81,14 @@ Microsoft 登录需要项目自己的应用注册 Client ID，启用个人 Micro
 游戏、共享资源、托管 Java、下载缓存、备份和加密凭据可以整体迁移。控制目录及少量界面缓存保留原位，避免账户凭据因加密配置变化而失效；界面 HTTP 磁盘缓存上限设为 32 MiB。目录策略、迁移和卸载说明见 [STORAGE.md](docs/STORAGE.md)。
 
 ```text
-state.json             # schemaVersion=5，账户、实例、游戏文件夹索引、设置与收藏
+state.json             # schemaVersion=6，账户、实例、游戏文件夹索引、设置、收藏与外观
 state.json.bak         # 上次保存的状态
 state.json.v1.bak      # 首次从 0.1 升级时保存的原始状态
 state.json.v2.bak      # 首次从 0.2 升级时保存的原始状态
 state.json.v3.bak      # 首次升级 0.6 时保留的旧状态（实例与账户不重置）
 state.json.v4.bak      # 首次升级 0.7 时保留的旧状态（不改变旧实例路径）
+state.json.v5.bak      # 首次从 v5 升级 0.7.2 时保留的原始状态
+appearance/<uuid>.png  # 已导入的背景副本，删除源图片不影响使用
 diagnostics/<uuid>.json # 最近 12 次启动记录，不保存完整带令牌命令
 video-backups/<uuid>.json # 可还原的视频设置字段
 credentials/           # 系统加密的 Microsoft 刷新令牌与 .vault 凭据，不发给界面
@@ -98,7 +102,15 @@ cache/                 # 元数据和临时下载
 
 控制目录另有 `storage-location.json`（独立版本 1），记录活动数据位置；`.kjmcl-data.json` 是数据目录归属标记。迁移中的 `storage-migration.json` 记录逐文件校验结果，不包含凭据明文。
 
-完整备份启动器数据时先关闭应用，并另外备份自定义游戏目录。首次升级自动迁移 v1/v2/v3 状态，保留账户、原实例位置和手动内存；不要用旧版程序打开已升级数据。测试或隔离运行可设置 `KJMCL_DATA_DIR` 为专用绝对路径，不影响默认用户数据。
+完整备份启动器数据时先关闭应用，并另外备份自定义游戏目录。首次升级自动迁移 v1–v5 状态，保留账户、原实例位置和手动内存；不要用旧版程序打开已升级数据。测试或隔离运行可设置 `KJMCL_DATA_DIR` 为专用绝对路径，不影响默认用户数据。
+
+## 0.7.2 界面与自定义背景
+
+左侧导航与主面板分别悬浮在背景上，使用深色毛玻璃和细线边框保持区分度。首页集中保留实例选择和启动操作，移除重复卡片、内存统计及“就绪”“JAVA EDITION”等装饰文字。页面与弹窗使用统一下拉菜单，支持方向键、Home / End、输入匹配、Enter 和 Escape。
+
+“启动器设置 → 外观”支持 PNG / JPEG 图片、背景暗度、模糊及恢复默认。图片由主进程校验并复制到受管数据目录，源图移动或删除后仍可使用；过大的图片会缩放，文件上限为 20 MiB。外观随启动器数据迁移，状态升级至 schema v6，保留账户、实例、外部游戏文件夹和旧状态备份。
+
+发布说明见 [0.7.2](docs/releases/0.7.2.md)，实际验证范围见 [验证记录](docs/VALIDATION.md)。
 
 ## 0.6.1 自动轻量模式
 
@@ -170,7 +182,7 @@ cache/                 # 元数据和临时下载
 - 下载采用校验后复用完整文件，不支持 HTTP Range 断点续传。模组更新仅覆盖从本应用 Modrinth / CurseForge 安装并记录的文件；本地 JAR 不自动识别远程项目。
 - 旧版游戏与 Apple Silicon 的原生库支持取决于上游提供的架构。没有兼容 Java / 原生库时需指定适配运行时；未实现 Rosetta 或旧 LWJGL 的自动替换。
 - 关闭启动器会取消任务，正在运行的游戏继续运行；重新打开后不能重新附着旧进程日志。游戏运行期间建议保留启动器。
-- 未配置平台签名、公证和发布渠道；Windows 为本地未签名测试构建。
+- 未配置平台签名、公证和自动更新渠道；Windows 构建未签名。
 
 架构、测试规范、发布及待确认事项见 [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)、[docs/DECISIONS.md](docs/DECISIONS.md)。
 

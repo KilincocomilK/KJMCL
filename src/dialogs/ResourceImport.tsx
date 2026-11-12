@@ -1,3 +1,4 @@
+import { Select } from '../Select';
 import { useEffect, useRef, useState } from 'react';
 import type {
   ResourceCandidate,
@@ -143,7 +144,7 @@ function ImportReview({
         {!results && (
           <label>
             统一添加到
-            <select
+            <Select
               aria-label="统一目标实例"
               defaultValue=""
               disabled={busy}
@@ -155,7 +156,7 @@ function ImportReview({
                   {i.name} · {i.version}
                 </option>
               ))}
-            </select>
+            </Select>
           </label>
         )}
         {files.map((file, index) => (
@@ -165,7 +166,7 @@ function ImportReview({
             <p>{file.error || file.reason}</p>
             {!file.error && !results && (
               <div className="resource-import-controls">
-                <select
+                <Select
                   aria-label={file.name + ' 类型'}
                   value={choices[index].kind}
                   disabled={busy || !!file.kind}
@@ -177,8 +178,8 @@ function ImportReview({
                       {v}
                     </option>
                   ))}
-                </select>
-                <select
+                </Select>
+                <Select
                   aria-label={file.name + ' 实例'}
                   value={choices[index].id}
                   disabled={busy}
@@ -190,8 +191,8 @@ function ImportReview({
                       {i.name} · {i.version} · {i.loader}
                     </option>
                   ))}
-                </select>
-                <select
+                </Select>
+                <Select
                   aria-label={file.name + ' 同名处理'}
                   value={choices[index].conflict}
                   disabled={busy}
@@ -199,7 +200,7 @@ function ImportReview({
                 >
                   <option value="skip">同名跳过</option>
                   <option value="rename">保留为副本</option>
-                </select>
+                </Select>
               </div>
             )}
           </section>

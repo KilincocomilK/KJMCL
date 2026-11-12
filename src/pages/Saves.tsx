@@ -1,3 +1,4 @@
+import { Select } from '../Select';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Archive,
@@ -226,7 +227,7 @@ export function SavesPage({
                 <p className="save-warning">游戏运行中，可浏览地图；停止游戏后可编辑。</p>
               )}
               <div className="toolbar">
-                <select
+                <Select
                   aria-label="存档维度"
                   value={dimension}
                   disabled={!!busy}
@@ -244,7 +245,7 @@ export function SavesPage({
                       {dims[d.id] ?? d.id}
                     </option>
                   ))}
-                </select>
+                </Select>
                 <label>
                   区域 X
                   <input
@@ -819,7 +820,7 @@ function WorldProperties({
         </label>
         <label>
           游戏模式
-          <select
+          <Select
             value={form.gameType}
             onChange={(e) => update('gameType', Number(e.target.value))}
           >
@@ -828,11 +829,11 @@ function WorldProperties({
                 {n}
               </option>
             ))}
-          </select>
+          </Select>
         </label>
         <label>
           难度
-          <select
+          <Select
             value={form.difficulty}
             onChange={(e) => update('difficulty', Number(e.target.value))}
           >
@@ -841,7 +842,7 @@ function WorldProperties({
                 {n}
               </option>
             ))}
-          </select>
+          </Select>
         </label>
         <label>
           <input

@@ -1,3 +1,4 @@
+import { Select } from '../Select';
 import { useEffect, useState } from 'react';
 import { Copy, Download, Play, Radio, Users } from 'lucide-react';
 import type { Snapshot, TerracottaState } from '../../shared/types';
@@ -5,7 +6,6 @@ import { api } from '../api';
 import type { Run } from '../ui';
 const labels: Record<string, string> = {
   offline: '未连接',
-  waiting: '就绪',
   'host-scanning': '等待世界对局域网开放',
   'host-starting': '正在创建房间',
   'host-ok': '房间已开放',
@@ -64,17 +64,18 @@ export function MultiplayerPage({ state, run }: { state: Snapshot; run: Run }) {
         <div>
           <h2>
             陶瓦联机{' '}
-            <span className="status">
-              {status ? (labels[status.state] ?? status.state) : '正在读取…'}
-            </span>
+            {status?.state !== 'waiting' && (
+              <span className="status">
+                {status ? (labels[status.state] ?? status.state) : '正在读取…'}
+              </span>
+            )}
           </h2>
-          <p>创建房间，将邀请码分享给好友，一起游玩 Java 版。</p>
           <small>Terracotta © Burning_TNT 及贡献者 · 基于 EasyTier</small>
         </div>
         {status?.version && <small>{status.version}</small>}
       </section>
       <div className="toolbar">
-        <select
+        <Select
           aria-label="联机游戏实例"
           value={selected?.id ?? ''}
           onChange={(e) => void run(() => api.select({ instanceId: e.target.value }))}
@@ -87,7 +88,7 @@ export function MultiplayerPage({ state, run }: { state: Snapshot; run: Run }) {
               {i.name} · {i.version}
             </option>
           ))}
-        </select>
+        </Select>
         <button
           disabled={
             !selected ||

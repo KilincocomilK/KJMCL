@@ -1,3 +1,4 @@
+import { Select } from '../Select';
 import { useState } from 'react';
 import { Globe } from 'lucide-react';
 import type { Account } from '../../shared/types';
@@ -60,7 +61,7 @@ export function ThirdPartyLogin({ run }: { run: Run }) {
       </form>
       {profiles.length > 1 && (
         <Field label="游戏角色">
-          <select
+          <Select
             onChange={(e) =>
               void run(() => api.selectProfile({ accountId: profiles[0].id, uuid: e.target.value }))
             }
@@ -70,7 +71,7 @@ export function ThirdPartyLogin({ run }: { run: Run }) {
                 {p.name}
               </option>
             ))}
-          </select>
+          </Select>
         </Field>
       )}
     </section>

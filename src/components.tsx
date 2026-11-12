@@ -1,5 +1,6 @@
 import { useEffect, useRef, type ReactNode } from 'react';
 import { X, Box } from 'lucide-react';
+import { Select } from './Select';
 export function Modal({
   title,
   children,
@@ -16,13 +17,17 @@ export function Modal({
   closeRef.current = onClose;
   useEffect(() => {
     const previous = document.activeElement as HTMLElement;
-    ref.current?.querySelector<HTMLElement>('input,select,button')?.focus();
+    ref.current
+      ?.querySelector<HTMLElement>(
+        'input:not([aria-hidden="true"]),select:not([aria-hidden="true"]),button',
+      )
+      ?.focus();
     const handle = (event: KeyboardEvent) => {
       if (event.key === 'Escape') closeRef.current();
       if (event.key === 'Tab') {
         const nodes = Array.from(
           ref.current?.querySelectorAll<HTMLElement>(
-            'button:not(:disabled),input:not(:disabled),select:not(:disabled),textarea:not(:disabled),[tabindex="0"]',
+            'button:not(:disabled),input:not(:disabled):not([aria-hidden="true"]),select:not(:disabled):not([aria-hidden="true"]),textarea:not(:disabled),[tabindex="0"]',
           ) ?? [],
         );
         const first = nodes[0],
@@ -124,15 +129,15 @@ export function Terrain() {
     >
       <defs>
         <linearGradient id="sky" x2="0" y2="1">
-          <stop stopColor="#202b2d" />
-          <stop offset="1" stopColor="#595447" />
+          <stop stopColor="#485857" />
+          <stop offset="1" stopColor="#b09a7d" />
         </linearGradient>
         <linearGradient id="mist" x2="0" y2="1">
           <stop stopColor="#c99d66" stopOpacity="0" />
-          <stop offset="1" stopColor="#d4a163" stopOpacity=".28" />
+          <stop offset="1" stopColor="#e4b476" stopOpacity=".38" />
         </linearGradient>
         <linearGradient id="shade">
-          <stop stopColor="#111310" />
+          <stop stopColor="#111310" stopOpacity=".5" />
           <stop offset="1" stopColor="#111310" stopOpacity="0" />
         </linearGradient>
         <pattern id="grain" width="6" height="6" patternUnits="userSpaceOnUse">
@@ -140,7 +145,7 @@ export function Terrain() {
         </pattern>
       </defs>
       <rect width="900" height="440" fill="url(#sky)" />
-      <rect x="641" y="64" width="58" height="58" fill="#dcb575" opacity=".8" />
+      <rect x="641" y="64" width="58" height="58" fill="#ffd297" opacity=".9" />
       <path
         d="M0 232h110v-34h60v-32h49v27h55v-49h66v36h47v32h71v-42h55v-35h50v25h46v35h59v-17h65v49h117v213H0Z"
         fill="#53605a"
@@ -184,7 +189,7 @@ import type { Run } from './ui';
 import { api } from './api';
 export function InstanceSelect({ state, run }: { state: Snapshot; run: Run }) {
   return (
-    <select
+    <Select
       className="instance-select"
       aria-label="选择实例"
       value={state.selectedInstanceId ?? ''}
@@ -198,6 +203,6 @@ export function InstanceSelect({ state, run }: { state: Snapshot; run: Run }) {
           {i.name} · {i.version}
         </option>
       ))}
-    </select>
+    </Select>
   );
 }

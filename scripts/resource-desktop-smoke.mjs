@@ -1,4 +1,8 @@
-import { firstVisibleWindow, navigateWorkspace } from './desktop-test-utils.mjs';
+import {
+  firstVisibleWindow,
+  navigateWorkspace,
+  selectLauncherOption,
+} from './desktop-test-utils.mjs';
 import { _electron as electron, expect } from '@playwright/test';
 import { mkdtemp, mkdir, writeFile, readFile, rm } from 'node:fs/promises';
 import os from 'node:os';
@@ -62,7 +66,12 @@ try {
     await navigateWorkspace(page, pageName);
     await drop();
     await expect(page.getByRole('dialog', { name: '添加资源', exact: true })).toBeVisible();
-    await expect(page.getByLabel('drop.jar 实例')).toHaveValue(id);
+    await expect(
+      page
+        .locator('.launcher-select')
+        .filter({ has: page.getByRole('combobox', { name: 'drop.jar 实例', exact: true }) })
+        .locator('select'),
+    ).toHaveValue(id);
     if (pageName === '资源管理') {
       await page.getByRole('button', { name: '确认添加', exact: true }).click();
       await expect(
@@ -73,7 +82,7 @@ try {
   }
   const imported = await readFile(path.join(root, 'data', 'instances', id, 'mods', 'drop.jar'));
   expect(imported).toEqual(await readFile(source));
-  await page.getByLabel('选择实例').selectOption(id);
+  await selectLauncherOption(page, '选择实例', id);
   await page.getByRole('tab', { name: /^模组\s*1$/ }).click();
   await expect(
     page.locator('.resource-mod-row').getByText('drop.jar', { exact: true }),
@@ -91,9 +100,9 @@ try {
   await expect(
     page.locator('.resource-mod-row').getByText('renamed.jar', { exact: true }),
   ).toBeVisible();
-  await page.getByLabel('选择实例').selectOption(second);
+  await selectLauncherOption(page, '选择实例', second);
   await expect(page.locator('.resource-mod-row')).toHaveCount(0);
-  await page.getByLabel('选择实例').selectOption(id);
+  await selectLauncherOption(page, '选择实例', id);
   await page.getByRole('tab', { name: /^模组\s*1$/ }).click();
   await mkdir('.local', { recursive: true });
   await page.screenshot({ path: '.local/resources-v040.png' });
@@ -149,7 +158,7 @@ try {
   await page.locator('#native-drop-source').setInputFiles([pack, replay, shader, schematic]);
   await drop();
   await expect(page.getByRole('dialog', { name: '添加资源', exact: true })).toBeVisible();
-  await page.getByLabel('统一目标实例').selectOption(id);
+  await selectLauncherOption(page, '统一目标实例', id);
   await page.getByRole('button', { name: '确认添加', exact: true }).click();
   await expect(
     page.getByText('已添加 · build.schematic · 资源测试实例', { exact: true }),

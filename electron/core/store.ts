@@ -8,16 +8,25 @@ import {
   realpathSync,
 } from 'node:fs';
 import path from 'node:path';
-import type { Account, Instance, Settings, ContentFavorite, GameFolder } from '../../shared/types';
+import type {
+  Account,
+  Instance,
+  Settings,
+  ContentFavorite,
+  GameFolder,
+  Appearance,
+} from '../../shared/types';
 import {
   instanceSchema,
   settingsSchema,
   favoriteSchema,
   gameFolderSchema,
+  appearanceSchema,
 } from '../../shared/schema';
 import { z } from 'zod';
 interface Data {
-  schemaVersion: 5;
+  schemaVersion: 6;
+  appearance: Appearance;
   gameFolders: GameFolder[];
   selectedGameFolderId?: string;
   favorites: ContentFavorite[];
@@ -36,7 +45,8 @@ export class Store {
     root = this.root;
     this.file = path.join(root, 'state.json');
     this.data = {
-      schemaVersion: 5,
+      schemaVersion: 6,
+      appearance: { dim: 32, blur: 0 },
       gameFolders: [],
       favorites: [],
       accounts: [],
@@ -54,18 +64,22 @@ export class Store {
     };
     if (existsSync(this.file)) {
       const loaded = JSON.parse(readFileSync(this.file, 'utf8')) as Data;
-      if (![1, 2, 3, 4, 5].includes(loaded.schemaVersion))
+      if (![1, 2, 3, 4, 5, 6].includes(loaded.schemaVersion))
         throw new Error('不支持的数据格式，请使用匹配的 KJMCL 版本');
-      const migrating = Number(loaded.schemaVersion) < 5;
+      const migrating = Number(loaded.schemaVersion) < 6;
       if (migrating) copyFileSync(this.file, this.file + `.v${loaded.schemaVersion}.bak`);
       loaded.favorites =
         Number(loaded.schemaVersion) < 4
           ? []
           : z.array(favoriteSchema).max(2000).parse(loaded.favorites);
-      loaded.gameFolders = migrating
-        ? []
-        : z.array(gameFolderSchema).max(1000).parse(loaded.gameFolders);
-      loaded.schemaVersion = 5;
+      loaded.gameFolders =
+        Number(loaded.schemaVersion) < 5
+          ? []
+          : z.array(gameFolderSchema).max(1000).parse(loaded.gameFolders);
+      loaded.appearance = migrating
+        ? { dim: 32, blur: 0 }
+        : appearanceSchema.parse(loaded.appearance);
+      loaded.schemaVersion = 6;
       loaded.settings = settingsSchema.parse(loaded.settings);
       loaded.instances = loaded.instances.map((v) => {
         if (

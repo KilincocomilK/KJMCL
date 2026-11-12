@@ -1,3 +1,4 @@
+import { Select } from '../Select';
 import { useEffect, useState } from 'react';
 import { Activity, Download, Play, RotateCcw, Save, SlidersHorizontal } from 'lucide-react';
 import type {
@@ -113,14 +114,14 @@ function PerformanceContent({
         <fieldset disabled={locked}>
           <div className="form-grid">
             <Field label="内存分配">
-              <select
+              <Select
                 aria-label="内存分配"
                 value={settings.memory}
                 onChange={(e) => patch({ memory: e.target.value as PerformanceSettings['memory'] })}
               >
                 <option value="manual">手动</option>
                 <option value="auto">自动 · 保留系统空间</option>
-              </select>
+              </Select>
             </Field>
             <Field label={settings.memory === 'auto' ? '自动分配上限（MiB）' : '最大堆内存（MiB）'}>
               <input
@@ -137,7 +138,7 @@ function PerformanceContent({
               />
             </Field>
             <Field label="垃圾收集器">
-              <select
+              <Select
                 aria-label="垃圾收集器"
                 value={settings.collector}
                 onChange={(e) =>
@@ -147,7 +148,7 @@ function PerformanceContent({
                 <option value="auto">自动 · JVM 默认</option>
                 <option value="g1">G1</option>
                 <option value="zgc">ZGC · 低停顿</option>
-              </select>
+              </Select>
             </Field>
             <Field label="Java 路径">
               <input

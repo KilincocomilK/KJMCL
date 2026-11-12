@@ -5,7 +5,7 @@ import path from 'node:path';
 import { createHash } from 'node:crypto';
 import { createRequire } from 'node:module';
 import AdmZip from 'adm-zip';
-import { firstVisibleWindow } from './desktop-test-utils.mjs';
+import { firstVisibleWindow, selectLauncherOption } from './desktop-test-utils.mjs';
 const require = createRequire(import.meta.url);
 const root = await mkdtemp(path.join(os.tmpdir(), 'kjmcl-mod-resources-'));
 const version = JSON.parse(await readFile(path.resolve('package.json'), 'utf8')).version;
@@ -118,7 +118,7 @@ try {
   await page.screenshot({ path: '.local/resources-v071-compact.png' });
   await input.fill('slow');
   await input.press('Enter');
-  await page.getByLabel('选择实例').selectOption(other);
+  await selectLauncherOption(page, '选择实例', other);
   await expect(page.getByLabel('搜索模组', { exact: true })).toHaveValue('');
   await page.waitForTimeout(1400);
   await expect(page.getByText('Late Result', { exact: true })).toHaveCount(0);
@@ -131,9 +131,9 @@ try {
     ['versions:1.20.1'],
     ['categories:forge'],
   ]);
-  await page.getByLabel('模组来源').selectOption('curseforge');
+  await selectLauncherOption(page, '模组来源', 'curseforge');
   await expect(results).toHaveCount(0);
-  await page.getByLabel('模组来源').selectOption('modrinth');
+  await selectLauncherOption(page, '模组来源', 'modrinth');
   await page.getByLabel('搜索模组', { exact: true }).fill('empty');
   await page.getByLabel('搜索模组', { exact: true }).press('Enter');
   await expect(page.getByText('没有找到兼容模组', { exact: true })).toBeVisible();
