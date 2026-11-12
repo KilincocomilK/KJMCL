@@ -216,8 +216,45 @@ public class FolderFixture {
   await page.evaluate((id) => window.kjmcl.removeGameFolder(id), folder.id);
   expect((await page.evaluate(() => window.kjmcl.snapshot())).instances).toHaveLength(0);
   expect(await tree(source)).toEqual(afterLaunch);
+  // Hold the native trash call to verify the main-process lock, without using the OS recycle bin.
+  const disposableId = await page.evaluate(() =>
+    window.kjmcl.createInstance({ name: '删除锁测试', version: '1.21.1', loader: 'vanilla' }),
+  );
+  await app.evaluate(({ shell }) => {
+    globalThis.savedTrash = shell.trashItem;
+    shell.trashItem = async () => {
+      globalThis.trashReached = true;
+      await new Promise((resolve) => {
+        globalThis.finishTrash = resolve;
+      });
+    };
+  });
+  await page.evaluate((id) => {
+    globalThis.deleteFixture = window.kjmcl.deleteInstance(id);
+  }, disposableId);
+  await expect.poll(() => app.evaluate(() => !!globalThis.trashReached)).toBe(true);
+  for (const action of ['launch', 'install', 'deleteInstance']) {
+    const message = await page.evaluate(
+      async ({ id, action }) => {
+        try {
+          await window.kjmcl[action](id);
+          return '';
+        } catch (e) {
+          return String(e);
+        }
+      },
+      { id: disposableId, action },
+    );
+    expect(message).toContain('等待任务');
+  }
+  await app.evaluate(({ shell }) => {
+    globalThis.finishTrash();
+    shell.trashItem = globalThis.savedTrash;
+  });
+  await page.evaluate(() => globalThis.deleteFixture);
+  expect((await page.evaluate(() => window.kjmcl.snapshot())).instances).toHaveLength(0);
   console.log(
-    'PASS folder indexing without copies, shared/isolated worlds, original client/libraries/assets and JVM cwd, folder lock, persistence, detach preservation, seven-entry navigation and all workspace tabs (disposable fixtures)',
+    'PASS folder indexing without copies, shared/isolated worlds, original client/libraries/assets and JVM cwd, folder/deletion locks, persistence, detach preservation, seven-entry navigation and all workspace tabs (disposable fixtures; native trash mocked)',
   );
 } finally {
   for (const dir of [sharedDir, isolatedDir])

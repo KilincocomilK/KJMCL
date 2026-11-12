@@ -283,6 +283,9 @@ export class Storage {
     for (const i of store.data.instances)
       if (contains(store.dir(i.id), target) || contains(target, store.dir(i.id)))
         throw new Error('目标不能与游戏实例目录重叠');
+    for (const folder of store.data.gameFolders)
+      if (contains(folder.path, target) || contains(target, folder.path))
+        throw new Error('目标不能与已索引的游戏文件夹重叠');
     if (existsSync(target) && readdirSync(target).length) throw new Error('请选择空的数据目录');
     assertDataRoot(source, this.layout.config.owner);
     store.save();

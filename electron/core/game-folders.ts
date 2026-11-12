@@ -6,6 +6,7 @@ import type { Store } from './store';
 import { inside, exists } from './files';
 import { mergeVersions, type Version } from './minecraft';
 import { clientVersion } from './client-version';
+import { instanceSchema } from '../../shared/schema';
 import type {
   GameFolder,
   GameLayout,
@@ -16,7 +17,7 @@ import type {
 } from '../../shared/types';
 
 const versionName = (v: string) =>
-  typeof v === 'string' && /^[^\\/:*?"<>|\x00-\x1f]+$/.test(v) && v !== '.' && v !== '..';
+  typeof v === 'string' && !!v.trim() && instanceSchema.shape.version.safeParse(v).success;
 const same = (a: string, b: string) =>
   process.platform === 'win32' ? a.toLowerCase() === b.toLowerCase() : a === b;
 const within = (a: string, b: string) => {
@@ -54,10 +55,7 @@ export async function resolveExternalVersion(
   const child = await readConfig<Version & { jar?: string }>(
     inside(root, `versions/${id}/${id}.json`),
   );
-  if (
-    typeof child.id !== 'string' ||
-    (child.libraries !== undefined && !Array.isArray(child.libraries))
-  )
+  if (!versionName(child.id) || (child.libraries !== undefined && !Array.isArray(child.libraries)))
     throw new Error('版本元数据无效');
   child.libraries ??= [];
   const parent = child.inheritsFrom
@@ -123,7 +121,8 @@ type Entry = MinecraftScan['versions'][number] & {
 export class GameFolders {
   private selections = new Map<string, { root: string; expires: number; entries: Entry[] }>();
   constructor(private store: Store) {}
-  private async safeRoot(directory: string) {
+  private async safeRoot(directory: string, stored = false) {
+    if (stored) await checkGamePath(directory);
     const root = await realpath(directory);
     if (
       !(await lstat(root)).isDirectory() ||
@@ -199,7 +198,14 @@ export class GameFolders {
       try {
         entry.gameDir = await this.runDirectory(root, versionId, layout);
         const { version, client, base } = await resolveExternalVersion(root, versionId);
-        Object.assign(entry, metadata(version), { version: await clientVersion(client, base) });
+        const info = metadata(version),
+          actualVersion = await clientVersion(client, base);
+        if (
+          !versionName(actualVersion) ||
+          !instanceSchema.shape.loaderVersion.safeParse(info.loaderVersion).success
+        )
+          throw new Error('游戏或加载器版本标识无效，请在原启动器检查');
+        Object.assign(entry, info, { version: actualVersion });
       } catch (e) {
         entry.error = e instanceof Error ? e.message : String(e);
       }
@@ -222,7 +228,7 @@ export class GameFolders {
     if (!ticket || ticket.expires < Date.now()) throw new Error('目录预览已过期，请重新选择');
     if (value.layouts.some((l) => !ticket.entries.some((e) => e.id === l.versionId)))
       throw new Error('版本不属于此目录');
-    const root = await this.safeRoot(ticket.root);
+    const root = await this.safeRoot(ticket.root, true);
     let folder = this.store.data.gameFolders.find((f) => same(f.path, root));
     const existing = !!folder;
     folder ??= {
@@ -242,6 +248,7 @@ export class GameFolders {
       if (!before || (entry.layout === 'auto' && before.gameDir !== entry.gameDir))
         throw new Error('游戏配置已变化，请重新预览');
     }
+    await this.safeRoot(root, true);
     if (!existing) this.store.data.gameFolders.push(folder);
     this.commit(folder, entries);
     this.selections.delete(value.selectionId);
@@ -261,7 +268,7 @@ export class GameFolders {
       if (!i) {
         i = {
           id: randomUUID(),
-          name: entry.name.slice(0, 80),
+          name: entry.name.trim().slice(0, 80),
           version: entry.version ?? entry.id,
           loader: entry.loader ?? 'vanilla',
           status: 'ready',
@@ -273,9 +280,9 @@ export class GameFolders {
           width: 1280,
           height: 720,
         };
-        this.store.data.instances.push(i);
       }
-      Object.assign(i, {
+      const validated = instanceSchema.parse({
+        ...i,
         gameDir: entry.gameDir,
         version: entry.version ?? i.version,
         loader: entry.loader ?? i.loader,
@@ -284,6 +291,8 @@ export class GameFolders {
         error: entry.error,
         external: { folderId: folder.id, versionId: entry.id, layout: entry.layout },
       });
+      Object.assign(i, validated);
+      if (!this.store.data.instances.includes(i)) this.store.data.instances.push(i);
     }
     // Keep missing versions and their settings/history; never silently discard user state.
     for (const i of this.store.data.instances.filter((v) => v.external?.folderId === folder.id))
@@ -297,7 +306,7 @@ export class GameFolders {
   async refresh(id: string) {
     const folder = this.store.folder(id);
     try {
-      await this.safeRoot(folder.path);
+      await this.safeRoot(folder.path, true);
       const layouts = new Map(
         this.store.data.instances
           .filter((i) => i.external?.folderId === id)

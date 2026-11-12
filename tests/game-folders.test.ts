@@ -197,6 +197,7 @@ it('blocks traversal, loops and path substitution, without falling back to anoth
   await version('v1');
   const id = await add(),
     i = store.data.instances[0];
+  const ticket = await folders.scan(source);
   await expect(resolveExternalVersion(source, '../escape')).rejects.toThrow('路径');
   await atomicJson(path.join(source, 'versions/v1/v1.json'), {
     id: 'v1',
@@ -209,6 +210,11 @@ it('blocks traversal, loops and path substitution, without falling back to anoth
   await expect(assertOwned(store, i.id)).rejects.toThrow('链接');
   await folders.refresh(id);
   expect(i.status).toBe('error');
+  expect(store.folder(id).error).toContain('链接');
+  await expect(
+    folders.add({ selectionId: ticket.selectionId, name: '替换目录', layouts: [] }),
+  ).rejects.toThrow('链接');
+  expect(store.data.gameFolders).toHaveLength(1);
   // A folder registered by realpath must never be silently redirected by a substituted alias.
   folders.remove(id);
   expect(await exists(path.join(source + '-original', 'versions/v1/v1.jar'))).toBe(true);
@@ -220,6 +226,25 @@ it('blocks traversal, loops and path substitution, without falling back to anoth
       layouts: [{ versionId: '../escape', layout: 'auto' }],
     }).success,
   ).toBe(false);
+});
+it('keeps malformed external metadata from poisoning persisted launcher state', async () => {
+  const { store, source, folders, version, add } = await fixture();
+  await version('good');
+  const id = await add();
+  await version('bad-id', { id: '' });
+  await version('bad-long-id', { id: 'v'.repeat(300) });
+  await version('bad-loader', {
+    libraries: [{ name: 'net.fabricmc:fabric-loader:' + 'x'.repeat(161) }],
+  });
+  await mkdir(path.join(source, 'versions', 'v'.repeat(241)), { recursive: true });
+  await folders.refresh(id);
+  for (const name of ['bad-id', 'bad-long-id', 'bad-loader'])
+    expect(store.data.instances.find((i) => i.external?.versionId === name)?.status).toBe('error');
+  const reopened = new Store(store.root);
+  expect(reopened.data.instances).toHaveLength(4);
+  expect(reopened.data.instances.find((i) => i.external?.versionId === 'good')?.status).toBe(
+    'ready',
+  );
 });
 it('migrates v4 without dropping favorites, copied games, settings or the original state backup', async () => {
   const { store } = await fixture();

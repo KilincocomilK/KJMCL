@@ -161,6 +161,7 @@ app
       assertIdle(id);
     };
     const create = (value: Parameters<Api['createInstance']>[0]) => {
+      if (tasks.busy('game-folders')) throw new Error('请等待游戏文件夹索引完成');
       const id = randomUUID();
       const gameDir = claimDirectory(
         store,
@@ -407,17 +408,20 @@ app
         });
         if (result.response !== 1) return;
         assertIdle(id);
-        if (!i.external) {
-          await writable(id);
-          const dir = store.dir(id);
-          await mkdir(dir, { recursive: true });
-          await shell.trashItem(dir);
-        }
-        store.data.instances = store.data.instances.filter((x) => x.id !== id);
-        if (store.data.selectedInstanceId === id)
-          store.data.selectedInstanceId = store.data.instances[0]?.id;
-        store.save();
-        changed();
+        await tasks.exclusive(id, async () => {
+          const current = store.instance(id);
+          if (!current.external) {
+            await assertOwned(store, id);
+            const dir = store.dir(id);
+            await mkdir(dir, { recursive: true });
+            await shell.trashItem(dir);
+          }
+          store.data.instances = store.data.instances.filter((x) => x.id !== id);
+          if (store.data.selectedInstanceId === id)
+            store.data.selectedInstanceId = store.data.instances[0]?.id;
+          store.save();
+          changed();
+        });
       },
       install: async (id) => {
         await writable(id);

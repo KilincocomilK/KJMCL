@@ -12,6 +12,7 @@ import {
 } from '../electron/core/storage';
 import { Store } from '../electron/core/store';
 import { claimDirectory } from '../electron/core/instances';
+import { GameFolders } from '../electron/core/game-folders';
 import { exists, atomicJson } from '../electron/core/files';
 import type { Instance } from '../shared/types';
 const roots: string[] = [];
@@ -58,6 +59,24 @@ async function fixture() {
 }
 afterEach(async () => {
   for (const root of roots.splice(0)) await rm(root, { recursive: true, force: true });
+});
+it('rejects migrating launcher data anywhere inside an indexed game folder with isolated versions', async () => {
+  const { base, store, storage } = await fixture();
+  const source = path.join(base, 'indexed-games');
+  await atomicJson(path.join(source, 'versions/v1/v1.json'), {
+    id: '1.21.1',
+    mainClass: 'Main',
+    libraries: [],
+  });
+  await writeFile(path.join(source, 'versions/v1/v1.jar'), 'fixture');
+  await mkdir(path.join(source, 'versions/v1/saves'), { recursive: true });
+  const folders = new GameFolders(store),
+    scan = await folders.scan(source);
+  await folders.add({ selectionId: scan.selectionId, name: 'Indexed', layouts: [] });
+  const target = path.join(source, 'launcher-data');
+  await expect(storage.migrate(store, target, ctx())).rejects.toThrow('已索引');
+  expect(await exists(target)).toBe(false);
+  expect(await readFile(path.join(source, 'versions/v1/v1.jar'), 'utf8')).toBe('fixture');
 });
 it('gives a fresh installation a separate data child and keeps an existing profile in place', async () => {
   const base = await temp(),
