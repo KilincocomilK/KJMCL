@@ -63,8 +63,7 @@ public class FolderFixture {
   );
   execFileSync('javac', ['--release', '17', javaFile], { windowsHide: true });
   const client = path.join(source, 'versions', sharedVersion, sharedVersion + '.jar');
-  // The JDK jar CLI uses the Windows code page for paths. Package the compiled class
-  // directly so English CI runners still exercise Chinese game and classpath locations.
+  // Package the compiled class directly, independently of the JDK jar CLI's path encoding.
   const fixtureJar = new AdmZip();
   fixtureJar.addFile('FolderFixture.class', await readFile(path.join(base, 'FolderFixture.class')));
   const jarBytes = fixtureJar.toBuffer();
