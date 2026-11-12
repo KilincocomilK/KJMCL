@@ -60,6 +60,8 @@ v3 新增实例性能选项，从 v1/v2 迁移时保留对应版本原始备份�
 
 锁定直接依赖并提交 package-lock。使用 `npm ci`，先 typecheck / tests，再 build / package。打包产物按版本写入 `release/<version>/`，避免覆盖正在使用的旧版目录。三平台由各自 runner 构建；不要用 Windows 上存在 macOS 配置作为 macOS 已通过的证据。
 
+Node 版本见 `.node-version`，npm 版本见 `package.json` 的 `packageManager`；CI 同时固定两者。更新锁文件后必须在没有 `node_modules` 的隔离目录验证 `npm ci`，不能用已有依赖目录下的 build 代替。可复制 package.json 和 package-lock.json 到临时目录，用固定版本 npm 执行 `install --package-lock-only --ignore-scripts` 修复依赖记录，再检查差异并验证干净安装；不要用跳过可选依赖或宽松 peer 检查来掩盖不完整锁文件。
+
 修改 package.json 版本后运行 `npm run notices`，同步产物内的第三方许可清单版本。网络不可用时可使用 electron-builder 的 `electronDist` 指向本机已验证、版本相同的 Electron 分发目录；该覆盖只用于本机临时构建配置，不写入跨平台发布配置。
 
 代码已按用户授权采用 MIT 并署名 KilincocomilK；第三方声明保留各自许可证。正式发行前仍需补齐 Microsoft 应用授权、Windows 签名、macOS Developer ID / 公证及图标 / 名称权利。自动更新必须引入签名及验证机制，初版不从任意 URL 执行更新包。

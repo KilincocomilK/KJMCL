@@ -10,7 +10,7 @@ Minecraft Java 版桌面启动器，开发版 **0.6.1**。Electron + React + Typ
 
 ## 开发
 
-要求 Node.js 24、npm、Rust stable / Cargo 及系统原生链接工具（Windows 使用 MSVC 构建工具）；运行游戏另需相应版本 Java。桌面集成测试需要 PATH 中有 JDK 17 或更新版本。Rust 核心随应用打包，玩家无需安装 Rust。
+开发工具链固定为 Node.js 24.22.2（见 `.node-version`）、npm 11.19.1（见 `packageManager`），另需 Rust stable / Cargo 及系统原生链接工具（Windows 使用 MSVC 构建工具）；运行游戏另需相应版本 Java。桌面集成测试需要 PATH 中有 JDK 17 或更新版本。Rust 核心随应用打包，玩家无需安装 Rust。
 
 ```sh
 npm ci
