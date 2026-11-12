@@ -1,3 +1,4 @@
+import { ResourcesPage } from './pages/Resources';
 import { AccountPage } from './pages/Accounts';
 import { StorageSetup } from './pages/Storage';
 import { SettingsPage } from './pages/Settings';
@@ -45,7 +46,14 @@ import {
   type WorkspaceTab,
 } from './pages/Workspace';
 type Page =
-  'home' | 'instances' | WorkspaceId | 'multiplayer' | 'downloads' | 'accounts' | 'settings';
+  | 'home'
+  | 'instances'
+  | 'resources'
+  | WorkspaceId
+  | 'multiplayer'
+  | 'downloads'
+  | 'accounts'
+  | 'settings';
 const pageLabels: Record<Page, string> = {
   home: '开始游戏',
   instances: '游戏实例',
@@ -60,7 +68,7 @@ const pageLabels: Record<Page, string> = {
 export function App() {
   const [state, setState] = useState<Snapshot>(),
     [page, setPage] = useState<Page>('home'),
-    [workspaceTab, setWorkspaceTab] = useState<WorkspaceTab>(defaultWorkspaceTab('resources')),
+    [workspaceTab, setWorkspaceTab] = useState<WorkspaceTab>(defaultWorkspaceTab('saves')),
     [error, setError] = useState(''),
     [notice, setNotice] = useState(() =>
       new URLSearchParams(location.search).get('modeNotice') === 'exited'
@@ -415,6 +423,15 @@ export function App() {
             </>
           )}
           {page === 'instances' && <LibraryPage state={state} run={run} onEdit={setEditing} />}
+          {page === 'resources' && (
+            <ResourcesPage
+              key={state.selectedInstanceId}
+              state={state}
+              run={run}
+              refreshKey={resourceFiles.length}
+              onImport={setResourceFiles}
+            />
+          )}
           {isWorkspace(page) && (
             <ConsolidatedWorkspace
               workspace={page}
@@ -422,8 +439,6 @@ export function App() {
               onTab={setWorkspaceTab}
               state={state}
               run={run}
-              resourceFiles={resourceFiles}
-              onImport={setResourceFiles}
             />
           )}
           {page === 'multiplayer' && <MultiplayerPage state={state} run={run} />}

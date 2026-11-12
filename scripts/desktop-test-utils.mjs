@@ -3,8 +3,7 @@ import { expect } from '@playwright/test';
 export async function navigateWorkspace(page, name) {
   const targets = {
     账户: ['账户管理'],
-    模组中心: ['资源管理', '模组管理'],
-    内容中心: ['资源管理', '内容发现'],
+    模组中心: ['资源管理'],
     存档备份: ['存档管理', '存档备份'],
     性能与诊断: ['诊断与维护', '性能诊断'],
     游戏日志: ['诊断与维护', '游戏日志'],

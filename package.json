@@ -1,7 +1,7 @@
 {
   "name": "kjmcl",
   "productName": "KJMCL",
-  "version": "0.7.0",
+  "version": "0.7.1",
   "private": true,
   "packageManager": "npm@11.19.1",
   "description": "KJMC Launcher",
@@ -22,7 +22,7 @@
     "dist": "npm run build && electron-builder",
     "preview": "vite --host 127.0.0.1",
     "format": "prettier --write src electron shared tests scripts *.json *.ts",
-    "test:desktop": "npm run build && node scripts/desktop-smoke.mjs && node scripts/resource-desktop-smoke.mjs && node scripts/save-desktop-smoke.mjs && node scripts/library-desktop-smoke.mjs && node scripts/lightweight-desktop-smoke.mjs && node scripts/folders-desktop-smoke.mjs",
+    "test:desktop": "npm run build && node scripts/desktop-smoke.mjs && node scripts/resource-desktop-smoke.mjs && node scripts/save-desktop-smoke.mjs && node scripts/library-desktop-smoke.mjs && node scripts/lightweight-desktop-smoke.mjs && node scripts/folders-desktop-smoke.mjs && node scripts/mod-resources-desktop-smoke.mjs",
     "test:storage": "npm run build && node scripts/storage-smoke.mjs",
     "test:uninstall": "npm run build && node scripts/uninstall-smoke.mjs",
     "notices": "node scripts/notices.mjs",

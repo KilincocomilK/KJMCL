@@ -198,7 +198,6 @@ public class FolderFixture {
   );
   await page.evaluate((id) => window.kjmcl.refreshGameFolder(id), folder.id);
   for (const [workspace, tabs] of [
-    ['资源管理', ['本地资源', '模组管理', '内容发现']],
     ['存档管理', ['世界编辑', '存档备份']],
     ['诊断与维护', ['性能诊断', '游戏日志', '崩溃报告', '磁盘管理']],
   ]) {

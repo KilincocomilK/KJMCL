@@ -1,0 +1,143 @@
+.resource-context,
+.resource-instance,
+.resource-searchbar,
+.resource-section-head {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.resource-context,
+.resource-section-head {
+  justify-content: space-between;
+}
+.resource-context {
+  flex-wrap: wrap;
+}
+.resource-instance {
+  flex-wrap: wrap;
+  min-width: 0;
+}
+.resource-instance .instance-select {
+  width: auto;
+  min-width: 210px;
+}
+.mod-resources {
+  display: flex;
+  flex-direction: column;
+}
+.resource-searchbar {
+  margin: 22px 0;
+}
+.resource-searchbar .search-input {
+  min-width: 120px;
+}
+.resource-searchbar input {
+  width: 100%;
+  min-width: 0;
+}
+.resource-searchbar select {
+  width: 145px;
+  flex-shrink: 0;
+}
+.resource-section-head {
+  margin: 22px 0 12px;
+  flex-wrap: wrap;
+}
+.resource-section-head h2 {
+  font-size: 14px;
+  margin: 0;
+  font-weight: 500;
+}
+.resource-section-head h2 span {
+  font: 11px monospace;
+  color: #85847d;
+  margin-left: 8px;
+}
+.resource-section-head button {
+  font-size: 12px;
+  padding: 8px 12px;
+}
+.resource-empty {
+  padding: 26px 18px;
+  margin: 0;
+  border: 1px dashed var(--line);
+  color: #99958c;
+  font-size: 13px;
+}
+.resource-hint {
+  font-size: 12px;
+}
+.unified-resources .mod-row .grow {
+  min-width: 0;
+}
+.unified-resources .mod-row button {
+  flex-shrink: 0;
+}
+.resource-menu {
+  position: relative;
+  flex-shrink: 0;
+  font-size: 12px;
+}
+.resource-menu summary {
+  list-style: none;
+  cursor: pointer;
+  border: 1px solid var(--line);
+  padding: 8px 12px;
+}
+.resource-menu summary::-webkit-details-marker {
+  display: none;
+}
+.resource-menu summary:hover,
+.resource-menu[open] summary {
+  color: var(--orange);
+  border-color: var(--orange);
+}
+.resource-menu-items {
+  position: absolute;
+  right: 0;
+  top: calc(100% + 4px);
+  z-index: 10;
+  width: 130px;
+  display: flex;
+  flex-direction: column;
+  padding: 5px;
+  background: #1b1a18;
+  border: 1px solid var(--line);
+  box-shadow: 0 8px 24px #0008;
+}
+.resource-menu-items button {
+  border: 0;
+  justify-content: flex-start;
+  background: transparent;
+  padding: 10px 12px;
+}
+.mod-search-results {
+  margin-top: 0;
+}
+.mod-resources .resource-section-head {
+  margin-top: 8px;
+}
+.mod-resources > section + section {
+  margin-top: 20px;
+}
+.resource-audit {
+  margin-top: 24px;
+  padding-top: 4px;
+  border-top: 1px solid var(--line);
+}
+@media (max-width: 1000px) {
+  .resource-searchbar {
+    gap: 8px;
+    flex-wrap: wrap;
+  }
+  .resource-searchbar .search-input {
+    flex-basis: 180px;
+  }
+  .resource-instance .instance-select {
+    max-width: 245px;
+  }
+  .unified-resources .mod-row {
+    gap: 10px;
+    padding: 15px;
+  }
+}

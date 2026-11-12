@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, useCallback } from 'react';
 import { FolderOpen, Plus, RefreshCw } from 'lucide-react';
 import type {
   ResourceCandidate,
@@ -8,34 +8,37 @@ import type {
   Snapshot,
 } from '../../shared/types';
 import { api } from '../api';
-import { Empty, Modal } from '../components';
+import { Empty, Modal, InstanceSelect } from '../components';
 import { resourceLabels } from '../dialogs/ResourceImport';
-import { size, type Run } from '../ui';
+import { size, loaderLabel, type Run } from '../ui';
+import { ModResources } from './ModResources';
+import '../resources.css';
 export function ResourcesPage({
   state,
   run,
   onImport,
-  showInstanceSelect = true,
+  refreshKey = 0,
 }: {
   state: Snapshot;
   run: Run;
   onImport: (files: ResourceCandidate[]) => void;
-  showInstanceSelect?: boolean;
+  refreshKey?: number;
 }) {
   const id = state.selectedInstanceId ?? '',
     [files, setFiles] = useState<ResourceFile[]>([]),
-    [kind, setKind] = useState<ResourceKind>('shaderpacks'),
+    [kind, setKind] = useState<ResourceKind>('mods'),
     [query, setQuery] = useState(''),
     [loading, setLoading] = useState(false),
     [revision, setRevision] = useState(0);
   const [preview, setPreview] = useState<{ file: ResourceFile; data: ResourcePreview }>(),
     [renaming, setRenaming] = useState<ResourceFile>(),
     [name, setName] = useState('');
+  const completed = state.tasks
+    .filter((t) => t.status !== 'running')
+    .map((t) => `${t.id}:${t.status}`)
+    .join('|');
   useEffect(() => {
     let alive = true;
-    setFiles([]);
-    setPreview(undefined);
-    setRenaming(undefined);
     if (!id) return;
     setLoading(true);
     void run(async () => {
@@ -47,133 +50,196 @@ export function ResourcesPage({
     return () => {
       alive = false;
     };
-  }, [id, revision, run]);
-  const refresh = () => setRevision((n) => n + 1);
-  // Snapshot refreshes follow IPC actions; use the instance identity to reject late previews.
+  }, [id, revision, refreshKey, completed, run]);
+  const refresh = useCallback(() => setRevision((n) => n + 1), []);
   const current = useRef(id);
   current.current = id;
   const visible = files.filter(
     (f) => f.kind === kind && f.name.toLowerCase().includes(query.toLowerCase()),
   );
-  return (
-    <>
-      <div className="toolbar">
-        {showInstanceSelect && (
-          <select
-            aria-label="资源实例"
-            value={id}
-            onChange={(e) => void run(() => api.select({ instanceId: e.target.value }))}
-          >
-            <option value="" disabled>
-              选择实例
-            </option>
-            {state.instances.map((i) => (
-              <option key={i.id} value={i.id}>
-                {i.name} · {i.version}
-              </option>
-            ))}
-          </select>
-        )}
-        <button disabled={!id} onClick={() => void run(() => api.openFolder({ id, folder: kind }))}>
-          <FolderOpen size={16} />
-          打开目录
+  const instance = state.instances.find((i) => i.id === id);
+  const locked = state.running.includes(id);
+  const actions = (file: ResourceFile, allowRename = true) => (
+    <details
+      className="resource-menu"
+      onClick={(e) => {
+        if ((e.target as HTMLElement).closest('button')) e.currentTarget.open = false;
+      }}
+    >
+      <summary aria-label={'更多操作 ' + file.name}>更多</summary>
+      <div className="resource-menu-items">
+        <button
+          onClick={() =>
+            void run(async () => {
+              const data = await api.previewResource({ id, kind: file.kind, name: file.name });
+              if (current.current === id) setPreview({ file, data });
+            })
+          }
+        >
+          预览
         </button>
-        <button disabled={loading || !id} onClick={refresh}>
-          <RefreshCw size={16} />
-          刷新
+        {allowRename && (
+          <button
+            disabled={locked}
+            onClick={() => {
+              setRenaming(file);
+              setName(file.name.split('/').at(-1)!);
+            }}
+          >
+            重命名
+          </button>
+        )}
+        <button
+          onClick={() =>
+            void run(() => api.exportResource({ id, kind: file.kind, name: file.name }))
+          }
+        >
+          导出
         </button>
         <button
-          className="primary"
-          onClick={async () => {
-            const f = await run(() => api.pickResources());
-            if (f?.length) onImport(f);
-          }}
+          onClick={() =>
+            void run(() => api.revealResource({ id, kind: file.kind, name: file.name }))
+          }
         >
-          <Plus size={16} />
-          添加资源
+          定位
+        </button>
+        <button
+          className="danger"
+          disabled={locked}
+          onClick={() =>
+            void run(async () => {
+              if (file.kind === 'mods') await api.deleteMod({ id, name: file.name });
+              else await api.deleteResource({ id, kind: file.kind, name: file.name });
+              refresh();
+            })
+          }
+        >
+          删除
         </button>
       </div>
-      <div className="tabs resource-tabs">
-        {Object.entries(resourceLabels).map(([key, label]) => (
+    </details>
+  );
+  return (
+    <div className="unified-resources">
+      <div className="resource-context">
+        <div className="resource-instance">
+          <InstanceSelect state={state} run={run} />
+          {instance && <span className="badge">{loaderLabel[instance.loader]}</span>}
+        </div>
+        <div className="row">
           <button
+            className="icon"
+            aria-label="打开资源目录"
+            title="打开目录"
+            disabled={!id}
+            onClick={() => void run(() => api.openFolder({ id, folder: kind }))}
+          >
+            <FolderOpen size={17} />
+          </button>
+          <button
+            className="icon"
+            aria-label="刷新资源"
+            title="刷新"
+            disabled={loading || !id}
+            onClick={refresh}
+          >
+            <RefreshCw size={17} />
+          </button>
+          <button
+            className="primary"
+            disabled={!id || locked}
+            onClick={async () => {
+              const f = await run(() => api.pickResources());
+              if (f?.length) onImport(f);
+            }}
+          >
+            <Plus size={16} />
+            添加资源
+          </button>
+        </div>
+      </div>
+      <div className="tabs resource-tabs" role="tablist" aria-label="资源分类">
+        {Object.entries(resourceLabels).map(([key, label], index) => (
+          <button
+            role="tab"
+            id={'resource-tab-' + key}
+            aria-controls="resource-panel"
+            aria-selected={key === kind}
+            tabIndex={key === kind ? 0 : -1}
             className={key === kind ? 'active' : ''}
             key={key}
-            onClick={() => setKind(key as ResourceKind)}
+            onKeyDown={(e) => {
+              const tabs = Array.from(
+                e.currentTarget.parentElement!.querySelectorAll<HTMLButtonElement>('[role="tab"]'),
+              );
+              const next =
+                e.key === 'ArrowRight'
+                  ? (index + 1) % tabs.length
+                  : e.key === 'ArrowLeft'
+                    ? (index - 1 + tabs.length) % tabs.length
+                    : e.key === 'Home'
+                      ? 0
+                      : e.key === 'End'
+                        ? tabs.length - 1
+                        : undefined;
+              if (next !== undefined) {
+                e.preventDefault();
+                tabs[next]!.click();
+                tabs[next]!.focus();
+              }
+            }}
+            onClick={() => {
+              setKind(key as ResourceKind);
+              setQuery('');
+            }}
           >
             {label}
             <span>{files.filter((f) => f.kind === key).length}</span>
           </button>
         ))}
       </div>
-      <input
-        className="resource-search"
-        aria-label="搜索资源"
-        placeholder="搜索当前实例的资源"
-        value={query}
-        onChange={(e) => setQuery(e.target.value)}
-      />
-      {!id ? (
-        <Empty title="选择一个游戏实例" description="按实例管理光影、资源包、录像与原理图" />
-      ) : !visible.length ? (
-        <Empty
-          title={loading ? '正在读取资源…' : '没有匹配的资源'}
-          description="将文件拖到启动器任意页面，或点击添加资源"
-        />
-      ) : (
-        <div className="resource-list">
-          {visible.map((file) => (
-            <article className="panel resource-row" key={file.kind + file.name}>
-              <div>
-                <strong>{file.name}</strong>
-                <small>
-                  {size(file.size)} · {new Date(file.modifiedAt).toLocaleString('zh-CN')}
-                </small>
+      <div role="tabpanel" id="resource-panel" aria-labelledby={'resource-tab-' + kind}>
+        {!id ? (
+          <Empty title="选择一个游戏实例" />
+        ) : kind === 'mods' ? (
+          <ModResources
+            key={id}
+            state={state}
+            run={run}
+            files={files}
+            revision={revision + refreshKey}
+            onChanged={refresh}
+            actions={actions}
+          />
+        ) : (
+          <>
+            <input
+              className="resource-search"
+              aria-label="搜索资源"
+              placeholder={'搜索' + resourceLabels[kind]}
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+            />
+            {!visible.length ? (
+              <Empty title={loading ? '正在读取资源…' : '暂无匹配资源'} />
+            ) : (
+              <div className="resource-list">
+                {visible.map((file) => (
+                  <article className="panel resource-row" key={file.kind + file.name}>
+                    <div>
+                      <strong>{file.name}</strong>
+                      <small>
+                        {size(file.size)} · {new Date(file.modifiedAt).toLocaleString('zh-CN')}
+                      </small>
+                    </div>
+                    {actions(file)}
+                  </article>
+                ))}
               </div>
-              <div className="resource-actions">
-                <button
-                  onClick={() =>
-                    void run(async () => {
-                      const data = await api.previewResource({ id, kind, name: file.name });
-                      if (current.current === id) setPreview({ file, data });
-                    })
-                  }
-                >
-                  预览
-                </button>
-                <button
-                  onClick={() => {
-                    setRenaming(file);
-                    setName(file.name.split('/').at(-1)!);
-                  }}
-                >
-                  重命名
-                </button>
-                <button
-                  onClick={() => void run(() => api.exportResource({ id, kind, name: file.name }))}
-                >
-                  导出
-                </button>
-                <button
-                  onClick={() => void run(() => api.revealResource({ id, kind, name: file.name }))}
-                >
-                  定位
-                </button>
-                <button
-                  className="danger"
-                  onClick={() =>
-                    void run(async () => {
-                      await api.deleteResource({ id, kind, name: file.name });
-                      refresh();
-                    })
-                  }
-                >
-                  删除
-                </button>
-              </div>
-            </article>
-          ))}
-        </div>
-      )}
+            )}
+          </>
+        )}
+      </div>
       {preview && (
         <Modal wide title={preview.file.name} onClose={() => setPreview(undefined)}>
           <div className="resource-preview">
@@ -230,7 +296,7 @@ export function ResourcesPage({
           </div>
         </Modal>
       )}
-    </>
+    </div>
   );
 }
 function SchematicLayer({ layer }: { layer: NonNullable<ResourcePreview['layers']>[number] }) {

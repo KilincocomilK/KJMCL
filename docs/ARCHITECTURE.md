@@ -42,7 +42,7 @@ v3 新增实例性能选项，从 v1/v2 迁移时保留对应版本原始备份�
 
 `src/pages/` 按领域拆分，扩展对话框在 `src/dialogs/`。新 API 必须同时更改 types、schema、preload 白名单和处理器，`tsc` 校验契约完整。
 
-0.7 状态 v5 增加 `gameFolders`、选中文件夹与 `Instance.external`，迁移保留原版本备份及 v4 收藏。`Store.runtime()` 对外部实例返回原共享目录，`Minecraft.resolved()` 每次读取原版本元数据和客户端路径；工作目录仍由实例索引决定。普通写操作检查同文件夹和重叠工作目录的运行/任务互斥。`Workspace.tsx` 组合资源、存档、诊断页面，保持唯一的实例选择器及可键盘访问的标签页。
+0.7 状态 v5 增加 `gameFolders`、选中文件夹与 `Instance.external`，迁移保留原版本备份及 v4 收藏。`Store.runtime()` 对外部实例返回原共享目录，`Minecraft.resolved()` 每次读取原版本元数据和客户端路径；工作目录仍由实例索引决定。普通写操作检查同文件夹和重叠工作目录的运行/任务互斥。`Workspace.tsx` 组合存档与诊断页面。0.7.1 的资源页面独立整合分类、本地文件操作及 `ModResources.tsx` 的模组搜索/管理，保持唯一实例选择器；切换实例会销毁旧请求状态，任务完成后重读文件。
 
 ## 测试
 

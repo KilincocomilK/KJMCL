@@ -1,10 +1,7 @@
 import type { KeyboardEvent } from 'react';
-import type { ResourceCandidate, Snapshot } from '../../shared/types';
+import type { Snapshot } from '../../shared/types';
 import { InstanceSelect } from '../components';
 import type { Run } from '../ui';
-import { ResourcesPage } from './Resources';
-import { ModPage } from './Mods';
-import { CatalogPage } from './Catalog';
 import { SavesPage } from './Saves';
 import { BackupsPage } from './Backups';
 import { PerformancePage } from './Performance';
@@ -13,30 +10,15 @@ import { CrashesPage } from './Crashes';
 import { MaintenancePage } from './Maintenance';
 import '../workspace.css';
 
-export type WorkspaceId = 'resources' | 'saves' | 'diagnostics';
-export type WorkspaceTab =
-  | 'local'
-  | 'mods'
-  | 'catalog'
-  | 'worlds'
-  | 'backups'
-  | 'performance'
-  | 'logs'
-  | 'crashes'
-  | 'storage';
+export type WorkspaceId = 'saves' | 'diagnostics';
+export type WorkspaceTab = 'worlds' | 'backups' | 'performance' | 'logs' | 'crashes' | 'storage';
 
 export const WORKSPACE_LABELS: Record<WorkspaceId, string> = {
-  resources: '资源管理',
   saves: '存档管理',
   diagnostics: '诊断与维护',
 };
 
 const WORKSPACE_TABS: Record<WorkspaceId, readonly { key: WorkspaceTab; label: string }[]> = {
-  resources: [
-    { key: 'local', label: '本地资源' },
-    { key: 'mods', label: '模组管理' },
-    { key: 'catalog', label: '内容发现' },
-  ],
   saves: [
     { key: 'worlds', label: '世界编辑' },
     { key: 'backups', label: '存档备份' },
@@ -50,7 +32,7 @@ const WORKSPACE_TABS: Record<WorkspaceId, readonly { key: WorkspaceTab; label: s
 };
 
 export function isWorkspace(page: string): page is WorkspaceId {
-  return page === 'resources' || page === 'saves' || page === 'diagnostics';
+  return page === 'saves' || page === 'diagnostics';
 }
 
 export function defaultWorkspaceTab(workspace: WorkspaceId): WorkspaceTab {
@@ -69,16 +51,12 @@ export function ConsolidatedWorkspace({
   onTab,
   state,
   run,
-  resourceFiles,
-  onImport,
 }: {
   workspace: WorkspaceId;
   tab: WorkspaceTab;
   onTab: (tab: WorkspaceTab) => void;
   state: Snapshot;
   run: Run;
-  resourceFiles: ResourceCandidate[];
-  onImport: (files: ResourceCandidate[]) => void;
 }) {
   const tabs = WORKSPACE_TABS[workspace],
     active = normalizeWorkspaceTab(workspace, tab),
@@ -127,46 +105,14 @@ export function ConsolidatedWorkspace({
         role="tabpanel"
         aria-labelledby={`${workspace}-tab-${active}`}
       >
-        <WorkspaceContent
-          tab={active}
-          state={state}
-          run={run}
-          resourceFiles={resourceFiles}
-          onImport={onImport}
-        />
+        <WorkspaceContent tab={active} state={state} run={run} />
       </div>
     </section>
   );
 }
 
-function WorkspaceContent({
-  tab,
-  state,
-  run,
-  resourceFiles,
-  onImport,
-}: {
-  tab: WorkspaceTab;
-  state: Snapshot;
-  run: Run;
-  resourceFiles: ResourceCandidate[];
-  onImport: (files: ResourceCandidate[]) => void;
-}) {
+function WorkspaceContent({ tab, state, run }: { tab: WorkspaceTab; state: Snapshot; run: Run }) {
   switch (tab) {
-    case 'local':
-      return (
-        <ResourcesPage
-          key={state.selectedInstanceId + ':' + resourceFiles.length}
-          state={state}
-          run={run}
-          onImport={onImport}
-          showInstanceSelect={false}
-        />
-      );
-    case 'mods':
-      return <ModPage state={state} run={run} showInstanceSelect={false} />;
-    case 'catalog':
-      return <CatalogPage state={state} run={run} showInstanceSelect={false} />;
     case 'worlds':
       return <SavesPage state={state} run={run} showInstanceSelect={false} />;
     case 'backups':

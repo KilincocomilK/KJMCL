@@ -74,23 +74,27 @@ try {
   const imported = await readFile(path.join(root, 'data', 'instances', id, 'mods', 'drop.jar'));
   expect(imported).toEqual(await readFile(source));
   await page.getByLabel('选择实例').selectOption(id);
-  await page.getByRole('button', { name: /^模组\s*1$/ }).click();
-  await expect(page.locator('.resource-row').getByText('drop.jar', { exact: true })).toBeVisible();
+  await page.getByRole('tab', { name: /^模组\s*1$/ }).click();
+  await expect(
+    page.locator('.resource-mod-row').getByText('drop.jar', { exact: true }),
+  ).toBeVisible();
+  await page.getByLabel('更多操作 drop.jar', { exact: true }).click();
   await page.getByRole('button', { name: '预览', exact: true }).click();
   await expect(
     page.getByRole('dialog', { name: 'drop.jar' }).getByText('smoke', { exact: true }),
   ).toBeVisible();
   await page.getByRole('button', { name: '关闭', exact: true }).click();
+  await page.getByLabel('更多操作 drop.jar', { exact: true }).click();
   await page.getByRole('button', { name: '重命名', exact: true }).click();
   await page.getByLabel('文件名').fill('renamed.jar');
   await page.getByRole('button', { name: '保存', exact: true }).click();
   await expect(
-    page.locator('.resource-row').getByText('renamed.jar', { exact: true }),
+    page.locator('.resource-mod-row').getByText('renamed.jar', { exact: true }),
   ).toBeVisible();
   await page.getByLabel('选择实例').selectOption(second);
-  await expect(page.locator('.resource-row')).toHaveCount(0);
+  await expect(page.locator('.resource-mod-row')).toHaveCount(0);
   await page.getByLabel('选择实例').selectOption(id);
-  await page.getByRole('button', { name: /^模组\s*1$/ }).click();
+  await page.getByRole('tab', { name: /^模组\s*1$/ }).click();
   await mkdir('.local', { recursive: true });
   await page.screenshot({ path: '.local/resources-v040.png' });
   const makeZip = async (name, entries) => {
@@ -156,8 +160,9 @@ try {
     ['Replay 录像', 'recording.mcpr'],
     ['投影原理图', 'build.schematic'],
   ]) {
-    await page.getByRole('button', { name: new RegExp('^' + tab + '\\s*1$') }).click();
+    await page.getByRole('tab', { name: new RegExp('^' + tab + '\\s*1$') }).click();
     await expect(page.locator('.resource-row').getByText(file, { exact: true })).toBeVisible();
+    await page.getByLabel('更多操作 ' + file, { exact: true }).click();
     await page.getByRole('button', { name: '预览', exact: true }).click();
     const modal = page.getByRole('dialog', { name: file, exact: true });
     await expect(modal).toBeVisible();

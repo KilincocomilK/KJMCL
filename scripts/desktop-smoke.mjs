@@ -64,12 +64,11 @@ try {
   await mkdir(path.join(dir, 'mods'), { recursive: true });
   await writeFile(path.join(dir, 'mods', 'sample mod.jar'), 'fixture');
   await navigateWorkspace(page, '模组中心');
-  await expect(page.getByText('sample mod', { exact: true })).toBeVisible();
+  await expect(page.getByText('sample mod.jar', { exact: true })).toBeVisible();
   await page.getByRole('switch').click();
   await expect(page.getByRole('switch')).toHaveAttribute('aria-checked', 'false');
   await page.getByRole('combobox', { name: '模组来源' }).selectOption('curseforge');
-  await page.getByRole('button', { name: '发现模组', exact: true }).click();
-  await expect(page.getByPlaceholder('在 CurseForge 搜索模组')).toBeVisible();
+  await expect(page.getByLabel('搜索模组', { exact: true })).toBeVisible();
   await mkdir(path.join(dir, 'saves/Smoke World'), { recursive: true });
   await writeFile(path.join(dir, 'saves/Smoke World/level.dat'), 'world fixture');
   await navigateWorkspace(page, '存档备份');

@@ -83,15 +83,7 @@ try {
   await mkdir('.local', { recursive: true });
   await page.screenshot({ path: '.local/library-v060.png' });
   await expect(page.getByRole('button', { name: '生存测试', exact: true })).toHaveCount(0);
-  await navigateWorkspace(page, '内容中心');
-  await page.getByRole('button', { name: /收藏夹/ }).click();
-  await expect(page.getByRole('heading', { name: '测试资源收藏', exact: true })).toBeVisible();
-  await page.getByLabel('测试资源收藏 收藏分组').fill('常用');
-  await page.getByRole('heading', { name: '测试资源收藏', exact: true }).click();
-  await expect
-    .poll(async () => JSON.parse(await readFile(file, 'utf8')).favorites[0].group)
-    .toBe('常用');
-  await page.screenshot({ path: '.local/catalog-v060.png' });
+  expect((await page.evaluate(() => window.kjmcl.snapshot())).favorites[0].group).toBe('视觉');
   await navigateWorkspace(page, '模组中心');
   await page.getByRole('button', { name: '检查与批量操作', exact: true }).click();
   await expect(page.getByText('重复模组 ID：duplicate', { exact: true })).toHaveCount(2);
@@ -155,10 +147,10 @@ try {
     favorite: true,
     tags: ['创作', '红石'],
   });
-  expect(persisted.favorites[0].group).toBe('常用');
+  expect(persisted.favorites[0].group).toBe('视觉');
   expect(persisted.instances.some((i) => i.id === other)).toBe(true);
   console.log(
-    'PASS instance organization/favorites persistence, offline collection groups, mod audit/batch, redacted crash export and reviewed cache cleanup (disposable fixtures; no live content API acceptance)',
+    'PASS instance organization/favorites persistence, retained collection data, mod audit/batch, redacted crash export and reviewed cache cleanup (disposable fixtures; no live content API acceptance)',
   );
 } finally {
   if (app) await app.close();
