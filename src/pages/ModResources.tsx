@@ -1,10 +1,17 @@
 import { Select } from '../Select';
 import { useState, useEffect, useRef, type ReactNode } from 'react';
 import { Download, LoaderCircle, Puzzle, Search, X } from 'lucide-react';
-import type { Snapshot, ModFile, ModProject, ResourceFile } from '../../shared/types';
+import type {
+  Snapshot,
+  ModFile,
+  ModProject,
+  ResourceFile,
+  ContentProject,
+} from '../../shared/types';
 import { api } from '../api';
 import { type Run, size } from '../ui';
 import { ModAuditPanel } from './ModAudit';
+import { ContentVersions, FavoriteButton } from './ContentBrowser';
 
 export function ModResources({
   state,
@@ -35,6 +42,7 @@ export function ModResources({
   const [loading, setLoading] = useState(false);
   const [reading, setReading] = useState(true);
   const [audit, setAudit] = useState(false);
+  const [versionProject, setVersionProject] = useState<ContentProject>();
   const [busy, setBusy] = useState(false);
   const [pending, setPending] = useState<Record<string, string>>({});
   const epoch = useRef(0),
@@ -204,6 +212,32 @@ export function ModResources({
                           次下载
                         </small>
                       </div>
+                      <FavoriteButton
+                        project={{ source, kind: 'mod', projectId: m.project_id }}
+                        state={state}
+                        run={run}
+                      />
+                      <button
+                        disabled={locked || instance.loader === 'vanilla'}
+                        onClick={() =>
+                          setVersionProject({
+                            source,
+                            kind: 'mod',
+                            projectId: m.project_id,
+                            title: m.title,
+                            description: m.description,
+                            author: m.author,
+                            downloads: m.downloads,
+                            icon: m.icon_url,
+                            url:
+                              source === 'modrinth'
+                                ? `https://modrinth.com/mod/${encodeURIComponent(m.project_id)}`
+                                : `https://www.curseforge.com/minecraft/mc-mods/${encodeURIComponent(m.slug)}`,
+                          })
+                        }
+                      >
+                        版本
+                      </button>
                       <button
                         disabled={
                           installed ||
@@ -338,6 +372,18 @@ export function ModResources({
           </div>
           <ModAuditPanel id={id} state={state} run={run} />
         </section>
+      )}
+      {versionProject && (
+        <ContentVersions
+          key={id + versionProject.source + versionProject.projectId}
+          project={versionProject}
+          state={state}
+          run={run}
+          onClose={() => {
+            setVersionProject(undefined);
+            onChanged();
+          }}
+        />
       )}
     </div>
   );

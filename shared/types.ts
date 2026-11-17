@@ -37,6 +37,17 @@ export interface Instance {
   performance?: PerformanceSettings;
   organization?: InstanceOrganization;
   external?: { folderId: string; versionId: string; layout: GameLayout };
+  launchOptions?: InstanceLaunchOptions;
+}
+export interface InstanceLaunchOptions {
+  accountId?: string;
+  fullscreen: boolean;
+  target: { kind: 'menu' } | { kind: 'server'; address: string } | { kind: 'world'; name: string };
+}
+export interface LaunchChoices {
+  server: boolean;
+  world: boolean;
+  worlds: string[];
 }
 export interface InstanceOrganization {
   favorite: boolean;
@@ -301,6 +312,7 @@ export type LauncherEvent =
   | { type: 'log'; line: LogLine }
   | { type: 'lightweight'; state: LightweightState }
   | { type: 'window-visibility'; visible: boolean }
+  | { type: 'window-fullscreen'; fullscreen: boolean }
   | { type: 'mode-error'; message: string };
 export type ResourceKind =
   'mods' | 'shaderpacks' | 'resourcepacks' | 'replay_recordings' | 'schematics';
@@ -351,6 +363,99 @@ export interface TerracottaState {
   members: { name: string; kind: string; vendor: string }[];
 }
 export interface Api {
+  projectionAssets(value: import('./projection-assets').ProjectionAssetsRequest): Promise<import('./projection-assets').ProjectionAssets>;
+  projectionState(): Promise<import('./projection').ProjectionState>;
+  projectionRecover(): Promise<import('./projection').ProjectionState | null>;
+  projectionImport(path?: string): Promise<import('./projection').ProjectionDocument | null>;
+  projectionOpen(id: string): Promise<import('./projection').ProjectionDocument>;
+  projectionEdit(value: {
+    id: string;
+    revision: string;
+    op: import('./projection').ProjectionOp;
+  }): Promise<import('./projection').ProjectionDocument>;
+  projectionUndo(value: {
+    id: string;
+    revision: string;
+  }): Promise<import('./projection').ProjectionDocument>;
+  projectionRedo(value: {
+    id: string;
+    revision: string;
+  }): Promise<import('./projection').ProjectionDocument>;
+  projectionSelect(value: {
+    id: string;
+    revision: string;
+    selection: import('./projection').ProjectionSelection;
+  }): Promise<{ indices: number[] }>;
+  projectionExport(value: {
+    id: string;
+    revision: string;
+    format: 'litematic' | 'schem' | 'nbt' | 'materials' | 'png';
+    image?: string;
+  }): Promise<string | null>;
+  projectionInstall(value: {
+    id: string;
+    revision: string;
+    instanceId: string;
+    format: 'litematic' | 'schem' | 'nbt';
+  }): Promise<string>;
+  projectionRemove(id: string): Promise<void>;
+  seedMapInfo(): Promise<import('./seed-map').SeedMapInfo>;
+  seedMapSeed(input: string): Promise<{ seed: string; input: string }>;
+  seedMapRandom(): Promise<string>;
+  seedMapTile(
+    value: import('./seed-map').SeedMapTileRequest,
+  ): Promise<import('./seed-map').SeedMapTile>;
+  seedMapFeatures(
+    value: import('./seed-map').SeedMapFeaturesRequest,
+  ): Promise<import('./seed-map').SeedMapFeatures>;
+  seedMapBiome(
+    value: import('./seed-map').SeedMapPointRequest,
+  ): Promise<import('./seed-map').SeedMapBiome>;
+  seedMapLocate(
+    value: import('./seed-map').SeedMapLocateRequest,
+  ): Promise<import('./seed-map').SeedMapLocation>;
+  seedMapCancel(requestId: string): Promise<void>;
+  seedMapState(): Promise<import('./seed-map').SeedMapState>;
+  seedMapSaveState(value: import('./seed-map').SeedMapState): Promise<void>;
+  seedMapRecoverState(): Promise<import('./seed-map').SeedMapState | null>;
+  seedMapImportWorld(value?: WorldRef): Promise<import('./seed-map').SeedMapWorld | null>;
+  seedMapImportProject(): Promise<import('./seed-map').SeedMapDocument | null>;
+  seedMapImportMarkers(): Promise<{
+    seed: string;
+    version: string;
+    markers: import('./seed-map').SeedMapMarker[];
+  } | null>;
+  seedMapExport(value: {
+    map: import('./seed-map').SeedMapDocument;
+    format: 'project' | 'markers' | 'png';
+    image?: string;
+  }): Promise<string | null>;
+  windowFullscreen(value?: boolean): Promise<boolean>;
+  skinEditorImportPalette(): Promise<import('./skin-palette').SkinPalette | null>;
+  skinEditorExportPalette(value: import('./skin-palette').SkinPalette): Promise<string | null>;
+  skinEditorExportAnimation(value: { frames: string[]; seconds: number }): Promise<string | null>;
+  skinEditorRecoverDraft(): Promise<SkinProject | null>;
+  skinEditorVersions(id: string): Promise<SkinEditorVersion[]>;
+  skinEditorRestoreVersion(value: { id: string; versionId: string }): Promise<SkinProject>;
+  skinEditorImport(mode: 'skin' | 'image'): Promise<SkinEditorImage | null>;
+  skinEditorImportProject(): Promise<SkinProject | null>;
+  skinEditorLoadDraft(): Promise<SkinProject | null>;
+  skinEditorSaveDraft(project: SkinProject): Promise<void>;
+  skinEditorList(): Promise<SkinEditorEntry[]>;
+  skinEditorOpen(id: string): Promise<SkinProject>;
+  skinEditorSave(value: { id?: string; project: SkinProject }): Promise<string>;
+  skinEditorDelete(id: string): Promise<boolean>;
+  skinEditorExport(value: {
+    project: SkinProject;
+    format: 'png' | 'png64' | 'legacy' | 'project';
+  }): Promise<string | null>;
+  skinEditorAccount(id: string): Promise<SkinEditorImage | null>;
+  skinEditorApply(value: { accountId: string; project: SkinProject }): Promise<boolean>;
+  skinEditorCapture(dataUrl: string): Promise<string | null>;
+  exportCompleteLogs(id: string): Promise<string | null>;
+  exportModList(id: string): Promise<string | null>;
+  moveAccount(value: { id: string; direction: 'up' | 'down' }): Promise<void>;
+  launchChoices(id: string): Promise<LaunchChoices>;
   organizeInstance(value: { id: string; organization: InstanceOrganization }): Promise<void>;
   catalogSearch(value: {
     id: string;
@@ -561,6 +666,7 @@ export interface SaveMetadata {
   version?: string;
   dataVersion?: number;
   seed?: string;
+  generation?: { preset?: string | null; largeBiomes: boolean };
   gameType?: number;
   difficulty?: number;
   hardcore?: boolean;
@@ -624,4 +730,26 @@ declare global {
   interface Window {
     kjmcl?: Api;
   }
+}
+import type { SkinProject } from './skin';
+export interface SkinEditorImage {
+  name: string;
+  width: number;
+  height: number;
+  pixels: string;
+}
+export interface SkinEditorEntry {
+  id: string;
+  name: string;
+  model: 'classic' | 'slim';
+  resolution: number;
+  modifiedAt: number;
+  thumbnail: string;
+}
+export interface SkinEditorVersion {
+  versionId: string;
+  name: string;
+  createdAt: number;
+  model: 'classic' | 'slim';
+  resolution: 64 | 128 | 256;
 }

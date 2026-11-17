@@ -5,6 +5,15 @@ import { Skins } from './core/skins';
 import { CurseForge } from './core/curseforge';
 import { Publishing } from './core/publishing';
 import { featureHandlers } from './features';
+import { skinEditorHandlers } from './skin-editor-features';
+import { SkinEditorStorage } from './core/skin-editor';
+import { SeedMapEngine } from './core/seed-map';
+import { SeedMapStorage } from './core/seed-map-storage';
+import { seedMapHandlers } from './seed-map-features';
+import { ProjectionWorkshop } from './core/projection-workshop';
+import { ProjectionAssetService } from './core/projection-assets';
+import { projectionHandlers } from './projection-features';
+import { exportSkinAnimation } from './core/skin-animation';
 import { resourceHandlers } from './resource-features';
 import { Resources } from './core/resources';
 import { Terracotta } from './core/terracotta';
@@ -17,6 +26,9 @@ import { DiskUsage } from './core/disk-usage';
 import { CrashReports } from './core/crash-reports';
 import { AppearanceManager } from './core/appearance';
 import { privateValues } from './core/private-values';
+import { launchChoices } from './core/launch-options';
+import { moveAccount } from './core/account-order';
+import { exportCompleteLog } from './core/log-export';
 import { LightweightMode } from './core/lightweight';
 import { WindowHost } from './window-host';
 import { app, BrowserWindow, ipcMain, dialog, shell, nativeImage } from 'electron';
@@ -148,6 +160,20 @@ app
       instances = new Instances(store),
       backups = new Backups(store),
       publishing = new Publishing(store, net, vault, cf);
+    const skinEditorStorage = new SkinEditorStorage(store);
+    const seedMapStorage = new SeedMapStorage(store);
+    const projectionWorkshop = new ProjectionWorkshop(
+      store,
+      app.isPackaged
+        ? path.join(process.resourcesPath, 'native', 'projection')
+        : path.join(__dirname, '../dist-native/projection'),
+    );
+    const projectionAssets = new ProjectionAssetService(store, net);
+    const seedMapEngine = new SeedMapEngine(
+      app.isPackaged
+        ? path.join(process.resourcesPath, 'native', 'seed-map')
+        : path.join(__dirname, '../dist-native/seed-map'),
+    );
     auth.thirdParty = ygg;
     const assertIdle = (id: string) => {
       if (
@@ -202,14 +228,46 @@ app
         ? path.join(process.resourcesPath, 'native')
         : path.join(__dirname, '../dist-native'),
     );
-    let exitingTerracotta = false;
+    let exitingTerracotta = false,
+      quitReady = false;
     app.on('before-quit', (event) => {
-      if (exitingTerracotta) return;
+      if (quitReady) return;
       event.preventDefault();
+      if (exitingTerracotta) return;
       exitingTerracotta = true;
-      void terracotta.dispose().finally(() => app.quit());
+      seedMapEngine.cancelAll();
+      projectionAssets.cancel();
+      void Promise.allSettled([
+        terracotta.dispose(),
+        skinEditorStorage.flush(),
+        seedMapStorage.flush(),
+        projectionWorkshop.flush(),
+        projectionAssets.flush(),
+      ]).then(async (results) => {
+        try {
+          // A final drain includes writes submitted while Terracotta was still stopping.
+          const saved = await Promise.allSettled([
+            skinEditorStorage.flush(),
+            seedMapStorage.flush(),
+            projectionWorkshop.flush(),
+            projectionAssets.flush(),
+          ]);
+          const errors = [results[0], ...saved].filter(
+            (result): result is PromiseRejectedResult => result.status === 'rejected',
+          );
+          if (errors.length)
+            dialog.showErrorBox(
+              'KJMCL 退出时出现问题',
+              errors.map((result) => String(result.reason)).join('\n'),
+            );
+        } finally {
+          quitReady = true;
+          app.quit();
+        }
+      });
     });
     app.on('will-quit', () => {
+      seedMapEngine.dispose();
       lightweight?.dispose();
       host?.dispose();
     });
@@ -218,7 +276,44 @@ app
         throw new Error('请先停止游戏并等待所有任务完成');
     };
     const handlers: Omit<Api, 'onEvent' | 'droppedPaths'> = {
+      ...projectionHandlers({
+        workshop: projectionWorkshop,
+        assets: projectionAssets,
+        store,
+        window: () => window!,
+        writable,
+      }),
+      ...seedMapHandlers({
+        engine: seedMapEngine,
+        storage: seedMapStorage,
+        saves,
+        window: () => window!,
+      }),
+      windowFullscreen: async (value) => {
+        if (!window || window.isDestroyed()) return false;
+        if (value === undefined) return window.isFullScreen();
+        window.setFullScreen(value);
+        return value;
+      },
+      skinEditorExportAnimation: async ({ frames, seconds }) => {
+        const result = await dialog.showSaveDialog(window!, {
+          defaultPath: 'skin-preview.gif',
+          filters: [{ name: 'GIF 动画', extensions: ['gif'] }],
+        });
+        if (result.canceled || !result.filePath) return null;
+        return tasks.start('导出皮肤动画', 'skin-animation', (ctx) =>
+          exportSkinAnimation(frames, seconds, result.filePath!, ctx),
+        );
+      },
+      ...skinEditorHandlers({
+        store,
+        skins,
+        window: () => window!,
+        changed,
+        storage: skinEditorStorage,
+      }),
       ...libraryHandlers({
+        secrets: async () => [...auth.redactionValues(), ...(await privateValues(store.root))],
         store,
         tasks,
         catalog: new Catalog(store, net, mods, cf, resources, packs),
@@ -274,6 +369,10 @@ app
       },
       restartLauncher: async () => {
         requireIdle();
+        await skinEditorStorage.flush();
+        await seedMapStorage.flush();
+        await projectionWorkshop.flush();
+        await projectionAssets.flush();
         await terracotta.dispose();
         if (storage.pendingRestart) await storage.commitPending();
         // Restart the outer portable wrapper: its predecessor removes the old extraction directory.
@@ -396,6 +495,10 @@ app
         store.save();
         changed();
       },
+      moveAccount: async ({ id, direction }) => {
+        moveAccount(store, id, direction);
+        changed();
+      },
       beginLogin: () => auth.begin(),
       cancelLogin: async () => auth.cancel(),
       versions: () => mc.versions(),
@@ -403,6 +506,11 @@ app
       createInstance: async (value) => create(value),
       updateInstance: async (value) => {
         await writable(value.id);
+        if (
+          value.launchOptions?.accountId &&
+          !store.data.accounts.some((a) => a.id === value.launchOptions?.accountId)
+        )
+          throw new Error('账户不存在，请重新选择');
         const old = store.instance(value.id);
         Object.assign(old, {
           name: value.name,
@@ -412,6 +520,7 @@ app
           width: value.width,
           height: value.height,
           performance: value.performance,
+          launchOptions: value.launchOptions,
         });
         store.save();
         changed();
@@ -458,6 +567,11 @@ app
           if (store.data.settings.closeOnLaunch) window?.minimize();
         });
       },
+      launchChoices: async (id) => {
+        const instance = store.instance(id);
+        if (instance.status !== 'ready') return { server: false, world: false, worlds: [] };
+        return launchChoices((await mc.resolved(id)).version, store.dir(id));
+      },
       stop: async (id) => launcher.stop(id),
       checkLaunch: async (id) => {
         await writable(id);
@@ -500,6 +614,19 @@ app
         changed();
       },
       logs: async (id) => launcher.logs(id),
+      exportCompleteLogs: async (id) => {
+        store.instance(id);
+        const file = await dialog.showSaveDialog(window!, {
+          defaultPath: 'kjmcl-complete.log',
+          filters: [{ name: '日志', extensions: ['log'] }],
+        });
+        if (!file.filePath) return null;
+        await exportCompleteLog(store, id, file.filePath, [
+          ...auth.redactionValues(),
+          ...(await privateValues(store.root)),
+        ]);
+        return file.filePath;
+      },
       exportLogs: async (id) => {
         const file = await dialog.showSaveDialog(window!, {
           defaultPath: 'kjmcl-game.log',
@@ -620,6 +747,17 @@ app
     let activeOperations = 0;
     const lightMethods = new Set(['lightweightState', 'setLightweight', 'stop', 'window']);
     const storageReadOnly = new Set([
+      'seedMapInfo',
+      'seedMapSeed',
+      'seedMapRandom',
+      'seedMapTile',
+      'seedMapFeatures',
+      'seedMapBiome',
+      'seedMapLocate',
+      'seedMapCancel',
+      'seedMapState',
+      'seedMapRecoverState',
+      'windowFullscreen',
       'snapshot',
       'backgroundImage',
       'lightweightState',
@@ -685,10 +823,14 @@ app
         if (!event.defaultPrevented) {
           lightweight?.dispose();
           host?.dispose();
+        } else {
+          exitingTerracotta = false;
+          quitReady = false;
         }
       },
       (current) => {
         window = current;
+        current?.webContents.once('destroyed', () => seedMapEngine.cancelAll());
       },
     );
     lightweight = new LightweightMode(

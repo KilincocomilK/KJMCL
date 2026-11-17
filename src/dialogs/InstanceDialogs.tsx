@@ -6,6 +6,7 @@ import { api } from '../api';
 import { Field, Modal } from '../components';
 import { type Run, loaderLabel, date, size } from '../ui';
 import { DirectoryField, CloneDialog, PublishDialog } from './AdvancedDialogs';
+import { LaunchOptionsSettings } from '../components/LaunchOptionsSettings';
 export function CreateDialog({
   state,
   run,
@@ -22,10 +23,23 @@ export function CreateDialog({
     [lv, setLv] = useState(''),
     [loaders, setLoaders] = useState<string[]>([]),
     [snap, setSnap] = useState(state.settings.showSnapshots),
+    [old, setOld] = useState(false),
+    [versionQuery, setVersionQuery] = useState(''),
     [loading, setLoading] = useState(true),
     [busy, setBusy] = useState(false),
     [error, setError] = useState(''),
     [gameDir, setGameDir] = useState('');
+  const visibleVersions = versions.filter(
+    (v) =>
+      (v.type === 'release' ||
+        (snap && v.type === 'snapshot') ||
+        (old && ['old_alpha', 'old_beta'].includes(v.type))) &&
+      v.id.toLowerCase().includes(versionQuery.trim().toLowerCase()),
+  );
+  useEffect(() => {
+    if (versions.length && !visibleVersions.some((v) => v.id === version))
+      setVersion(visibleVersions[0]?.id ?? '');
+  }, [versions, snap, old, versionQuery, version]);
   useEffect(() => {
     let live = true;
     api
@@ -103,20 +117,32 @@ export function CreateDialog({
               <input type="checkbox" checked={snap} onChange={(e) => setSnap(e.target.checked)} />
               快照版本
             </label>
+            <label className="check">
+              <input type="checkbox" checked={old} onChange={(e) => setOld(e.target.checked)} />
+              远古版本
+            </label>
           </div>
+          {!!versions.length && (
+            <input
+              aria-label="搜索游戏版本"
+              placeholder="搜索版本，如 1.21"
+              value={versionQuery}
+              onChange={(e) => setVersionQuery(e.target.value)}
+            />
+          )}
           {versions.length ? (
             <Select
               aria-label="游戏版本"
               value={version}
               onChange={(e) => setVersion(e.target.value)}
             >
-              {versions
-                .filter((v) => snap || v.type === 'release')
-                .map((v) => (
-                  <option key={v.id} value={v.id}>
-                    {v.id} · {v.type === 'release' ? '正式版' : v.type}
-                  </option>
-                ))}
+              {!visibleVersions.length && <option value="">没有匹配的版本</option>}
+              {visibleVersions.map((v) => (
+                <option key={v.id} value={v.id}>
+                  {v.id} ·{' '}
+                  {v.type === 'release' ? '正式版' : v.type === 'snapshot' ? '快照' : '远古版'}
+                </option>
+              ))}
             </Select>
           ) : (
             <input
@@ -175,10 +201,12 @@ export function CreateDialog({
 
 export function EditDialog({
   instance,
+  state,
   run,
   onClose,
 }: {
   instance: Instance;
+  state: Snapshot;
   run: Run;
   onClose: () => void;
 }) {
@@ -317,6 +345,7 @@ export function EditDialog({
               />
             </Field>
           </div>
+          <LaunchOptionsSettings instance={i} state={state} onChange={set} />
           <Field label="JVM 参数" hint="每行一个参数">
             <textarea rows={3} value={args} onChange={(e) => setArgs(e.target.value)} />
           </Field>

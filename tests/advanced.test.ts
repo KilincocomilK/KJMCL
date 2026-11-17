@@ -91,7 +91,7 @@ it('migrates v1 without losing directories or the original backup', async () => 
   delete v1.instances[0].gameDir;
   await atomicJson(path.join(store.root, 'state.json'), v1);
   const migrated = new Store(store.root);
-  expect(migrated.data.schemaVersion).toBe(6);
+  expect(migrated.data.schemaVersion).toBe(7);
   expect(migrated.dir('source')).toBe(path.join(store.root, 'instances/source'));
   expect(
     JSON.parse(await readFile(path.join(store.root, 'state.json.v1.bak'), 'utf8')).schemaVersion,

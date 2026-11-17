@@ -44,6 +44,16 @@ try {
       JSON.stringify({ version: 1, root: control, owner, setupComplete: true }),
     );
     await writeFile(path.join(control, 'assets/probe'), 'managed');
+    await mkdir(path.join(control, 'seed-map'));
+    await mkdir(path.join(control, 'projection-workshop'));
+    await writeFile(
+      path.join(control, 'projection-workshop/index.json'),
+      '{"schemaVersion":1,"current":null,"entries":[]}',
+    );
+    await writeFile(
+      path.join(control, 'seed-map/workspace.json'),
+      '{"schemaVersion":1,"current":null,"saved":[]}',
+    );
     await writeFile(path.join(control, 'unrelated.txt'), 'unrelated');
     await writeFile(path.join(outside, 'world.txt'), 'external-world');
     const env = {
@@ -77,6 +87,20 @@ try {
       choice !== 1,
     );
     assert.equal(await readFile(path.join(outside, 'world.txt'), 'utf8'), 'external-world');
+    assert.equal(
+      await access(path.join(control, 'projection-workshop/index.json')).then(
+        () => true,
+        () => false,
+      ),
+      choice !== 1,
+    );
+    assert.equal(
+      await access(path.join(control, 'seed-map/workspace.json')).then(
+        () => true,
+        () => false,
+      ),
+      choice !== 1,
+    );
     assert.equal(await readFile(path.join(control, 'unrelated.txt'), 'utf8'), 'unrelated');
     console.log(
       'PASS uninstall main-process choice ' +

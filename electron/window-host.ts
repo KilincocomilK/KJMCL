@@ -67,6 +67,16 @@ export class WindowHost {
       visibility(window.isVisible() && !window.isMinimized() && window.isFocused());
     window.on('blur', hidden).on('hide', hidden).on('minimize', hidden);
     window.on('focus', shown).on('show', shown).on('restore', shown);
+    const fullscreen = (value: boolean) => {
+      if (!window.isDestroyed())
+        window.webContents.send('kjmcl:event', {
+          type: 'window-fullscreen',
+          fullscreen: value,
+        } satisfies LauncherEvent);
+    };
+    window
+      .on('enter-full-screen', () => fullscreen(true))
+      .on('leave-full-screen', () => fullscreen(false));
     this.current = window;
     this.onCurrent(window);
     this.lightweight = lightweight;

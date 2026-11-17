@@ -3,6 +3,8 @@ dist/
 dist-electron/
 dist-native/
 electron/native/save-manager/target/
+electron/native/seed-map/target/
+electron/native/projection/target/
 release/
 coverage/
 .local/

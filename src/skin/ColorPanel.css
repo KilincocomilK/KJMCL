@@ -1,0 +1,169 @@
+.skin-color-panel {
+  display: grid;
+  gap: 9px;
+  min-width: 0;
+}
+.skin-color-panel .field {
+  margin: 0;
+  gap: 4px;
+}
+.skin-color-panel input {
+  min-width: 0;
+  width: 100%;
+}
+.skin-color-panel button {
+  font-size: 12px;
+  padding: 6px 8px;
+}
+.skin-color-pair {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  justify-content: space-between;
+}
+.skin-color-native {
+  display: block;
+  position: relative;
+  flex: 1;
+  height: 30px;
+  overflow: hidden;
+  border: 1px solid var(--line);
+  background: repeating-conic-gradient(#aaa 0% 25%, #555 0% 50%) 0 0 / 8px 8px;
+  cursor: pointer;
+}
+.skin-color-native input {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  opacity: 0;
+  cursor: pointer;
+}
+.skin-color-native span {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+.skin-color-native:focus-within {
+  outline: 2px solid var(--accent, #f26b21);
+}
+.skin-color-spectrum {
+  position: relative;
+  width: 100%;
+  aspect-ratio: 1.3;
+  touch-action: none;
+  border: 1px solid var(--line);
+  cursor: crosshair;
+}
+.skin-color-spectrum:focus-visible {
+  outline: 2px solid var(--accent, #f26b21);
+  outline-offset: 2px;
+}
+.skin-color-spectrum span {
+  pointer-events: none;
+  position: absolute;
+  width: 8px;
+  height: 8px;
+  border: 1px solid white;
+  outline: 1px solid #111;
+  transform: translate(-50%, -50%);
+}
+.skin-color-panel .skin-hue-slider {
+  appearance: none;
+  height: 9px;
+  margin: 2px 0;
+  background: linear-gradient(to right, #f00, #ff0, #0f0, #0ff, #00f, #f0f, #f00);
+  border: 1px solid var(--line);
+  padding: 0;
+}
+.skin-hue-slider::-webkit-slider-thumb {
+  appearance: none;
+  width: 6px;
+  height: 15px;
+  background: #fff;
+  border: 1px solid #111;
+  cursor: ew-resize;
+}
+.skin-color-mode {
+  width: 100%;
+}
+.skin-color-mode button {
+  flex: 1;
+}
+.skin-color-channels {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 5px;
+}
+.skin-color-channel {
+  display: grid;
+  gap: 3px;
+  color: var(--muted);
+  font-size: 11px;
+}
+.skin-color-channel input {
+  padding: 5px;
+  font-size: 12px;
+}
+.skin-alpha-field {
+  font-size: 12px;
+}
+.skin-alpha-field output {
+  float: right;
+}
+.skin-color-swatches {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(20px, 1fr));
+  gap: 4px;
+}
+.skin-color-panel .skin-color-swatch {
+  min-width: 0;
+  min-height: 20px;
+  padding: 0;
+  aspect-ratio: 1;
+  overflow: hidden;
+  position: relative;
+  border: 1px solid var(--line);
+  background: repeating-conic-gradient(#aaa 0% 25%, #555 0% 50%) 0 0 / 8px 8px;
+}
+.skin-color-swatch span {
+  position: absolute;
+  inset: 0;
+}
+.skin-color-swatch:hover {
+  outline: 1px solid var(--accent, #f26b21);
+}
+.skin-palette-section {
+  display: block;
+  border-top: 1px solid var(--line);
+  padding-top: 8px;
+}
+.skin-palette-section > summary {
+  cursor: pointer;
+  font-size: 12px;
+  margin-bottom: 8px;
+}
+.skin-palette-section summary span {
+  float: right;
+  color: var(--muted);
+  font-size: 11px;
+}
+.skin-palette-section > .launcher-select,
+.skin-palette-section > input {
+  margin-bottom: 7px;
+}
+.skin-palette-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+  margin-top: 7px;
+}
+.skin-palette-actions .launcher-select {
+  flex: 1 1 55px;
+  min-width: 0;
+  width: 60px;
+}
+.skin-color-panel .inline-error {
+  font-size: 12px;
+  margin: 0;
+}

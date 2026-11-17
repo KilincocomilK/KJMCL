@@ -29,3 +29,5 @@ await writeFile(
     executable: name,
   }),
 );
+await import('./build-seed-map.mjs');
+await import('./build-projection.mjs');

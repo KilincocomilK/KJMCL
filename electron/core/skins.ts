@@ -62,8 +62,10 @@ export class Skins {
   }
   async upload(id: string, file: string, variant: 'classic' | 'slim') {
     if ((await stat(file)).size > 1024 * 1024) throw new Error('皮肤文件不能超过 1 MiB');
-    const a = this.account(id),
-      data = await readFile(file);
+    return this.uploadBytes(id, await readFile(file), variant);
+  }
+  async uploadBytes(id: string, data: Buffer, variant: 'classic' | 'slim') {
+    const a = this.account(id);
     validateSkin(data);
     if (a.kind === 'offline') {
       a.skin = 'data:image/png;base64,' + data.toString('base64');

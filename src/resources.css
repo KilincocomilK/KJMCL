@@ -125,6 +125,47 @@
   padding-top: 4px;
   border-top: 1px solid var(--line);
 }
+.content-version-head {
+  justify-content: space-between;
+  padding: 18px 24px 0;
+  margin-bottom: 18px;
+  flex-wrap: wrap;
+}
+.content-file {
+  overflow-wrap: anywhere;
+  margin: 12px 24px;
+}
+.content-dialog-field {
+  margin: 20px 24px;
+}
+.modal > .resource-searchbar {
+  flex-wrap: wrap;
+  margin: 20px 24px;
+}
+.modal > .resource-searchbar > input {
+  flex: 1 1 100%;
+}
+.modal > .resource-searchbar > .launcher-select {
+  flex: 1 1 130px;
+  width: auto;
+  min-width: 0;
+}
+.modal > .mod-list,
+.modal > .pagination {
+  margin: 20px 24px;
+}
+.content-browser .mod-row,
+.modal .mod-row {
+  flex-wrap: wrap;
+}
+.content-browser .mod-row .grow,
+.modal .mod-row .grow {
+  flex: 1 1 200px;
+  min-width: 0;
+}
+.content-browser .resource-searchbar .launcher-select {
+  max-width: 160px;
+}
 @media (max-width: 1000px) {
   .resource-searchbar {
     gap: 8px;

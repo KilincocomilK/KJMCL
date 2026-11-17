@@ -96,12 +96,16 @@ export function mergeVersions(parent: Version, child: Version): Version {
     },
   };
 }
-export function expandArguments(args: Argument[], variables: Record<string, string>) {
+export function expandArguments(
+  args: Argument[],
+  variables: Record<string, string>,
+  features: Record<string, boolean> = { has_custom_resolution: true },
+) {
   return args
     .flatMap((a) =>
       typeof a === 'string'
         ? [a]
-        : allowed(a.rules)
+        : allowed(a.rules, undefined, undefined, features)
           ? Array.isArray(a.value)
             ? a.value
             : [a.value]

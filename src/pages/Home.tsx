@@ -20,13 +20,15 @@ export function HomePage({
   onLibrary: () => void;
 }) {
   const active = state.instances.find((i) => i.id === state.selectedInstanceId);
-  const account = state.accounts.find((a) => a.id === state.selectedAccountId);
+  const account = state.accounts.find(
+    (a) => a.id === (active?.launchOptions?.accountId ?? state.selectedAccountId),
+  );
   const running = !!active && state.running.includes(active.id);
   const installing = active?.status === 'installing';
   const needsAccount = active?.status === 'ready' && !account;
   const start = () => {
     if (!active) return onCreate();
-    if (needsAccount) return onAccounts();
+    if (needsAccount) return active.launchOptions?.accountId ? onEdit(active) : onAccounts();
     void run(async () => {
       if (active.status === 'ready') await api.launch(active.id);
       else if (active.external) await api.refreshGameFolder(active.external.folderId);
@@ -69,7 +71,12 @@ export function HomePage({
           <h2 className="home-name">Minecraft</h2>
         )}
         <div className="home-launch-actions">
-          <button className="primary hero-button" disabled={running || installing} onClick={start}>
+          <button
+            className="primary hero-button"
+            title={account ? `使用 ${account.name} 启动` : undefined}
+            disabled={running || installing}
+            onClick={start}
+          >
             {running ? (
               <Square size={18} />
             ) : active && active.status !== 'ready' ? (
@@ -84,7 +91,9 @@ export function HomePage({
                 : !active
                   ? '创建游戏实例'
                   : needsAccount
-                    ? '添加账户以启动'
+                    ? active.launchOptions?.accountId
+                      ? '重新选择启动账户'
+                      : '添加账户以启动'
                     : active.status === 'ready'
                       ? '启动游戏'
                       : active.external

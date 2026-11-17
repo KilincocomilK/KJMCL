@@ -33,7 +33,10 @@ export function ResourceImport({
     depth = useRef(0);
   useEffect(() => {
     const isFiles = (e: DragEvent) => Array.from(e.dataTransfer?.types ?? []).includes('Files');
+    const inProjection = (e: DragEvent) =>
+      (e.target as Element | null)?.closest?.('[data-projection-drop]');
     const enter = (e: DragEvent) => {
+      if (inProjection(e)) return;
       if (isFiles(e)) {
         e.preventDefault();
         depth.current++;
@@ -41,6 +44,7 @@ export function ResourceImport({
       }
     };
     const over = (e: DragEvent) => {
+      if (inProjection(e)) return;
       if (isFiles(e)) {
         e.preventDefault();
         if (e.dataTransfer) e.dataTransfer.dropEffect = 'copy';
@@ -53,6 +57,11 @@ export function ResourceImport({
       }
     };
     const drop = (e: DragEvent) => {
+      if (inProjection(e)) {
+        depth.current = 0;
+        setDragging(false);
+        return;
+      }
       if (!isFiles(e)) return;
       e.preventDefault();
       e.stopPropagation();

@@ -1,4 +1,16 @@
 import { z } from 'zod';
+import { projectionSchemas } from './projection';
+import { projectionAssetsSchema } from './projection-assets';
+import { skinProjectSchema } from './skin-schema';
+import { skinPaletteSchema } from './skin-palette';
+import {
+  seedMapTileSchema,
+  seedMapFeaturesSchema,
+  seedMapLocateSchema,
+  seedMapPointSchema,
+  seedMapStateSchema,
+  seedMapDocumentSchema,
+} from './seed-map';
 export const id = z
   .string()
   .min(1)
@@ -72,6 +84,36 @@ export const appearanceControlsSchema = z
 export const appearanceSchema = appearanceControlsSchema.extend({
   backgroundId: z.uuid().optional(),
 });
+export const launchOptionsSchema = z
+  .object({
+    accountId: id.optional(),
+    fullscreen: z.boolean(),
+    target: z.discriminatedUnion('kind', [
+      z.object({ kind: z.literal('menu') }).strict(),
+      z
+        .object({
+          kind: z.literal('server'),
+          address: z
+            .string()
+            .trim()
+            .min(1)
+            .max(253)
+            .regex(
+              /^(?:\[[0-9a-fA-F:]+\]|[a-zA-Z0-9\u0080-\uffff][a-zA-Z0-9.\-\u0080-\uffff]*)(?::[0-9]{1,5})?$/,
+            )
+            .refine(
+              (v) =>
+                !v.includes(':') ||
+                v.endsWith(']') ||
+                (Number(v.slice(v.lastIndexOf(':') + 1)) > 0 &&
+                  Number(v.slice(v.lastIndexOf(':') + 1)) <= 65535),
+            ),
+        })
+        .strict(),
+      z.object({ kind: z.literal('world'), name: fileName }).strict(),
+    ]),
+  })
+  .strict();
 export const instanceSchema = z.object({
   id,
   name: z.string().trim().min(1).max(80),
@@ -99,6 +141,7 @@ export const instanceSchema = z.object({
     })
     .optional(),
   organization: organizationSchema.optional(),
+  launchOptions: launchOptionsSchema.optional(),
 });
 const none = z.undefined();
 export const resourceKind = z.enum([
@@ -129,6 +172,79 @@ const regionRef = worldRef.extend({
   rz: z.number().int().min(-60000).max(60000),
 });
 export const schemas = {
+  ...projectionSchemas,
+  projectionAssets: projectionAssetsSchema,
+  seedMapInfo: none,
+  seedMapSeed: z.string().trim().min(1).max(256),
+  seedMapRandom: none,
+  seedMapTile: seedMapTileSchema,
+  seedMapFeatures: seedMapFeaturesSchema,
+  seedMapBiome: seedMapPointSchema,
+  seedMapLocate: seedMapLocateSchema,
+  seedMapCancel: z
+    .string()
+    .min(1)
+    .max(100)
+    .regex(/^[A-Za-z0-9_-]+$/),
+  seedMapState: none,
+  seedMapSaveState: seedMapStateSchema,
+  seedMapRecoverState: none,
+  seedMapImportWorld: z.object({ id, world: fileName }).strict().optional(),
+  seedMapImportProject: none,
+  seedMapImportMarkers: none,
+  seedMapExport: z
+    .object({
+      map: seedMapDocumentSchema,
+      format: z.enum(['project', 'markers', 'png']),
+      image: z
+        .string()
+        .max(32 * 1024 * 1024)
+        .startsWith('data:image/png;base64,')
+        .optional(),
+    })
+    .strict(),
+  windowFullscreen: z.boolean().optional(),
+  skinEditorImportPalette: none,
+  skinEditorExportPalette: skinPaletteSchema,
+  skinEditorExportAnimation: z
+    .object({
+      frames: z
+        .array(
+          z
+            .string()
+            .max(8 * 1024 * 1024)
+            .startsWith('data:image/png;base64,'),
+        )
+        .min(2)
+        .max(120)
+        .refine((frames) => frames.reduce((n, f) => n + f.length, 0) <= 48 * 1024 ** 2),
+      seconds: z.number().min(0.2).max(30),
+    })
+    .strict(),
+  skinEditorRecoverDraft: none,
+  skinEditorVersions: z.uuid(),
+  skinEditorRestoreVersion: z.object({ id: z.uuid(), versionId: z.uuid() }).strict(),
+  skinEditorImport: z.enum(['skin', 'image']),
+  skinEditorImportProject: none,
+  skinEditorLoadDraft: none,
+  skinEditorSaveDraft: skinProjectSchema,
+  skinEditorList: none,
+  skinEditorOpen: z.uuid(),
+  skinEditorSave: z.object({ id: z.uuid().optional(), project: skinProjectSchema }).strict(),
+  skinEditorDelete: z.uuid(),
+  skinEditorExport: z
+    .object({ project: skinProjectSchema, format: z.enum(['png', 'png64', 'legacy', 'project']) })
+    .strict(),
+  skinEditorAccount: id,
+  skinEditorApply: z.object({ accountId: id, project: skinProjectSchema }).strict(),
+  skinEditorCapture: z
+    .string()
+    .max(24 * 1024 * 1024)
+    .startsWith('data:image/png;base64,'),
+  exportCompleteLogs: id,
+  exportModList: id,
+  moveAccount: z.object({ id, direction: z.enum(['up', 'down']) }).strict(),
+  launchChoices: id,
   backgroundImage: none,
   pickBackground: none,
   resetBackground: none,

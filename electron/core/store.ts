@@ -25,7 +25,7 @@ import {
 } from '../../shared/schema';
 import { z } from 'zod';
 interface Data {
-  schemaVersion: 6;
+  schemaVersion: 7;
   appearance: Appearance;
   gameFolders: GameFolder[];
   selectedGameFolderId?: string;
@@ -45,7 +45,7 @@ export class Store {
     root = this.root;
     this.file = path.join(root, 'state.json');
     this.data = {
-      schemaVersion: 6,
+      schemaVersion: 7,
       appearance: { dim: 32, blur: 0 },
       gameFolders: [],
       favorites: [],
@@ -64,9 +64,9 @@ export class Store {
     };
     if (existsSync(this.file)) {
       const loaded = JSON.parse(readFileSync(this.file, 'utf8')) as Data;
-      if (![1, 2, 3, 4, 5, 6].includes(loaded.schemaVersion))
+      if (![1, 2, 3, 4, 5, 6, 7].includes(loaded.schemaVersion))
         throw new Error('不支持的数据格式，请使用匹配的 KJMCL 版本');
-      const migrating = Number(loaded.schemaVersion) < 6;
+      const migrating = Number(loaded.schemaVersion) < 7;
       if (migrating) copyFileSync(this.file, this.file + `.v${loaded.schemaVersion}.bak`);
       loaded.favorites =
         Number(loaded.schemaVersion) < 4
@@ -76,10 +76,10 @@ export class Store {
         Number(loaded.schemaVersion) < 5
           ? []
           : z.array(gameFolderSchema).max(1000).parse(loaded.gameFolders);
-      loaded.appearance = migrating
+      loaded.appearance = Number(loaded.schemaVersion) < 6
         ? { dim: 32, blur: 0 }
         : appearanceSchema.parse(loaded.appearance);
-      loaded.schemaVersion = 6;
+      loaded.schemaVersion = 7;
       loaded.settings = settingsSchema.parse(loaded.settings);
       loaded.instances = loaded.instances.map((v) => {
         if (

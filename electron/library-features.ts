@@ -13,6 +13,7 @@ export function libraryHandlers(c: {
   audit: ModAudit;
   disk: DiskUsage;
   crashes: CrashReports;
+  secrets: () => Promise<string[]>;
   writable: (id: string) => Promise<void>;
   idle: () => void;
   changed: () => void;
@@ -41,6 +42,19 @@ export function libraryHandlers(c: {
     removeFavorite: async (v) => {
       c.catalog.removeFavorite(v);
       c.changed();
+    },
+    exportModList: async (id) => {
+      c.store.instance(id);
+      const result = await dialog.showSaveDialog(c.window(), {
+        defaultPath: 'KJMCL-mods.txt',
+        filters: [{ name: '模组清单', extensions: ['txt'] }],
+      });
+      if (!result.filePath) return null;
+      await c.tasks.exclusive(id, async () => {
+        const secrets = await c.secrets();
+        await c.catalog.exportModList(id, result.filePath!, secrets, await c.audit.scan(id));
+      });
+      return result.filePath;
     },
     auditMods: (id) => c.audit.scan(id),
     planModBatch: async (v) => {
@@ -81,6 +95,7 @@ export function libraryHandlers(c: {
     | 'installContent'
     | 'saveFavorite'
     | 'removeFavorite'
+    | 'exportModList'
     | 'auditMods'
     | 'planModBatch'
     | 'applyModBatch'

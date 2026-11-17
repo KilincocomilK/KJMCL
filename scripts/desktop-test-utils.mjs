@@ -1,6 +1,11 @@
 import { expect } from '@playwright/test';
 
 export async function navigateWorkspace(page, name) {
+  if (['皮肤编辑器', '种子地图', '投影工坊'].includes(name)) {
+    await page.getByRole('button', { name: '工具箱', exact: true }).click();
+    await page.getByRole('button', { name: new RegExp(name) }).click();
+    return;
+  }
   const targets = {
     账户: ['账户管理'],
     模组中心: ['资源管理'],

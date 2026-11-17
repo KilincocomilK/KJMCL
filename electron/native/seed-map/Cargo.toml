@@ -1,0 +1,19 @@
+[package]
+name = "kjmcl-seed-map"
+version = "0.1.0"
+edition = "2024"
+authors = ["KilincocomilK"]
+license = "MIT"
+publish = false
+
+[dependencies]
+serde_json = "1"
+base64 = "0.22"
+
+[build-dependencies]
+cc = "1"
+
+[profile.release]
+lto = "thin"
+codegen-units = 1
+strip = true

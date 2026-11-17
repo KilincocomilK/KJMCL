@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, useCallback } from 'react';
-import { FolderOpen, Plus, RefreshCw } from 'lucide-react';
+import { FolderOpen, Plus, RefreshCw, Star } from 'lucide-react';
 import type {
   ResourceCandidate,
   ResourceFile,
@@ -12,6 +12,8 @@ import { Empty, Modal, InstanceSelect } from '../components';
 import { resourceLabels } from '../dialogs/ResourceImport';
 import { size, loaderLabel, type Run } from '../ui';
 import { ModResources } from './ModResources';
+import { ContentBrowser } from './ContentBrowser';
+import { Favorites } from './Favorites';
 import '../resources.css';
 export function ResourcesPage({
   state,
@@ -29,7 +31,8 @@ export function ResourcesPage({
     [kind, setKind] = useState<ResourceKind>('mods'),
     [query, setQuery] = useState(''),
     [loading, setLoading] = useState(false),
-    [revision, setRevision] = useState(0);
+    [revision, setRevision] = useState(0),
+    [favorites, setFavorites] = useState(false);
   const [preview, setPreview] = useState<{ file: ResourceFile; data: ResourcePreview }>(),
     [renaming, setRenaming] = useState<ResourceFile>(),
     [name, setName] = useState('');
@@ -127,6 +130,15 @@ export function ResourcesPage({
           {instance && <span className="badge">{loaderLabel[instance.loader]}</span>}
         </div>
         <div className="row">
+          <button onClick={() => setFavorites(true)}>
+            <Star size={16} />
+            收藏
+          </button>
+          {kind === 'mods' && (
+            <button disabled={!id} onClick={() => void run(() => api.exportModList(id))}>
+              导出清单
+            </button>
+          )}
           <button
             className="icon"
             aria-label="打开资源目录"
@@ -213,6 +225,19 @@ export function ResourcesPage({
           />
         ) : (
           <>
+            {(kind === 'shaderpacks' || kind === 'resourcepacks') && (
+              <ContentBrowser
+                key={id + kind}
+                kind={kind === 'shaderpacks' ? 'shader' : 'resourcepack'}
+                state={state}
+                run={run}
+              />
+            )}
+            <div className="resource-section-head">
+              <h2>
+                已安装 <span>{visible.length}</span>
+              </h2>
+            </div>
             <input
               className="resource-search"
               aria-label="搜索资源"
@@ -240,6 +265,9 @@ export function ResourcesPage({
           </>
         )}
       </div>
+      {favorites && (
+        <Favorites key={id} state={state} run={run} onClose={() => setFavorites(false)} />
+      )}
       {preview && (
         <Modal wide title={preview.file.name} onClose={() => setPreview(undefined)}>
           <div className="resource-preview">

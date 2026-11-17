@@ -13,6 +13,18 @@ pub fn metadata(root: &Path) -> Result<Value> {
     let root_nbt = level(root)?;
     let d = nbt::get(&root_nbt, "Data").ok_or("不支持的 level.dat 结构")?;
     let version = nbt::get(d, "Version");
+    let worldgen = nbt::get(d, "WorldGenSettings");
+    let generator = worldgen
+        .and_then(|g| nbt::get(g, "dimensions"))
+        .and_then(|dims| nbt::get(dims, "minecraft:overworld"))
+        .and_then(|overworld| nbt::get(overworld, "generator"));
+    let preset = generator
+        .and_then(|g| nbt::string(nbt::get(g, "settings")))
+        .or_else(|| generator.and_then(|g| nbt::string(nbt::get(g, "type"))))
+        .or_else(|| nbt::string(nbt::get(d, "generatorName")));
+    let large_biomes = preset
+        .as_deref()
+        .is_some_and(|p| p == "minecraft:large_biomes" || p.eq_ignore_ascii_case("largeBiomes"));
     let spawn = json!({"x":nbt::num(nbt::get(d,"SpawnX")),"y":nbt::num(nbt::get(d,"SpawnY")),"z":nbt::num(nbt::get(d,"SpawnZ"))});
     let mut rules = serde_json::Map::new();
     if let Some(m) = nbt::get(d, "GameRules").and_then(nbt::map) {
@@ -23,7 +35,7 @@ pub fn metadata(root: &Path) -> Result<Value> {
         }
     }
     Ok(
-        json!({"folder":root.file_name().unwrap_or_default().to_string_lossy(),"name":nbt::string(nbt::get(d,"LevelName")),"version":version.and_then(|v|nbt::string(nbt::get(v,"Name"))),"dataVersion":nbt::num(nbt::get(d,"DataVersion")),"seed":nbt::num(nbt::get(d,"WorldGenSettings").and_then(|g|nbt::get(g,"seed")).or_else(||nbt::get(d,"RandomSeed"))).map(|n|n.to_string()),"gameType":nbt::num(nbt::get(d,"GameType")),"difficulty":nbt::num(nbt::get(d,"Difficulty")),"hardcore":nbt::num(nbt::get(d,"hardcore")).map(|v|v!=0),"commands":nbt::num(nbt::get(d,"allowCommands")).map(|v|v!=0),"lastPlayed":nbt::num(nbt::get(d,"LastPlayed")),"spawn":spawn,"rules":rules}),
+        json!({"folder":root.file_name().unwrap_or_default().to_string_lossy(),"name":nbt::string(nbt::get(d,"LevelName")),"version":version.and_then(|v|nbt::string(nbt::get(v,"Name"))),"dataVersion":nbt::num(nbt::get(d,"DataVersion")),"seed":nbt::num(nbt::get(d,"WorldGenSettings").and_then(|g|nbt::get(g,"seed")).or_else(||nbt::get(d,"RandomSeed"))).map(|n|n.to_string()),"generation":{"preset":preset,"largeBiomes":large_biomes},"gameType":nbt::num(nbt::get(d,"GameType")),"difficulty":nbt::num(nbt::get(d,"Difficulty")),"hardcore":nbt::num(nbt::get(d,"hardcore")).map(|v|v!=0),"commands":nbt::num(nbt::get(d,"allowCommands")).map(|v|v!=0),"lastPlayed":nbt::num(nbt::get(d,"LastPlayed")),"spawn":spawn,"rules":rules}),
     )
 }
 pub fn list(root: &Path) -> Result<Value> {

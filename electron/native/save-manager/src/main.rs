@@ -21,6 +21,7 @@ fn run(v: Value) -> Result<Value> {
     let started = Instant::now();
     let result = match v["command"].as_str().ok_or("缺少操作")? {
         "list" => world::list(&root),
+        "metadata" => world::metadata(&root),
         "scan" => world::scan(&root),
         "region" => region::inspect(&root, &v),
         "plan" => safety::plan(&root, &v),

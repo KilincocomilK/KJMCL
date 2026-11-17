@@ -98,7 +98,16 @@ public class FolderFixture {
     : { args: ['.'], env };
   app = await electron.launch(options);
   let page = await firstVisibleWindow(app);
-  await expect(page.locator('.sidebar nav > button')).toHaveCount(7);
+  await expect(page.locator('.sidebar nav > button')).toHaveText([
+    '开始游戏',
+    '游戏实例',
+    '资源管理',
+    '工具箱',
+    '存档管理',
+    '陶瓦联机',
+    '诊断与维护',
+    '下载任务',
+  ]);
   await expect(page.locator('.sidebar nav')).not.toContainText('账户');
   await page.getByRole('button', { name: '账户管理', exact: true }).click();
   await page.getByPlaceholder('Player', { exact: true }).fill('FolderTester');
@@ -258,7 +267,7 @@ public class FolderFixture {
   await page.evaluate(() => globalThis.deleteFixture);
   expect((await page.evaluate(() => window.kjmcl.snapshot())).instances).toHaveLength(0);
   console.log(
-    'PASS folder indexing without copies, shared/isolated worlds, original client/libraries/assets and JVM cwd, folder/deletion locks, persistence, detach preservation, seven-entry navigation and all workspace tabs (disposable fixtures; native trash mocked)',
+    'PASS folder indexing without copies, shared/isolated worlds, original client/libraries/assets and JVM cwd, folder/deletion locks, persistence, detach preservation, eight-entry navigation and all workspace tabs (disposable fixtures; native trash mocked)',
   );
 } finally {
   for (const dir of [sharedDir, isolatedDir])

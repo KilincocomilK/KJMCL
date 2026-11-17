@@ -33,6 +33,9 @@ const directories = new Set([
   'diagnostics',
   'video-backups',
   'appearance',
+  'skin-editor',
+  'seed-map',
+  'projection-workshop',
 ]);
 const ownedName = (name: string) =>
   directories.has(name) || /^state\.json(?:\.bak|\.v[1-6]\.bak)?$/.test(name);
@@ -255,7 +258,7 @@ export class Storage {
         throw new Error('目标文件已变化，未切换：' + f.file);
     const targetState = await json<any>(path.join(m.target, 'state.json'));
     if (
-      ![1, 2, 3, 4, 5, 6].includes(targetState.schemaVersion) ||
+      ![1, 2, 3, 4, 5, 6, 7].includes(targetState.schemaVersion) ||
       !Array.isArray(targetState.instances)
     )
       throw new Error('目标状态无效');

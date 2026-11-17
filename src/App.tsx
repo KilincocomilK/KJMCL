@@ -1,5 +1,6 @@
 import { ResourcesPage } from './pages/Resources';
 import { AccountPage } from './pages/Accounts';
+import { ToolboxPage, toolLabels, type ToolId } from './pages/Toolbox';
 import { StorageSetup } from './pages/Storage';
 import { SettingsPage } from './pages/Settings';
 import { MultiplayerPage } from './pages/Multiplayer';
@@ -28,9 +29,10 @@ import {
   Upload,
   UserRound,
   Users,
+  Wrench,
   X,
 } from 'lucide-react';
-import type { Snapshot, Instance } from '../shared/types';
+import type { Snapshot, Instance, WorldRef } from '../shared/types';
 import { api } from './api';
 import { Brand, Empty } from './components';
 import { Background } from './Background';
@@ -50,6 +52,7 @@ type Page =
   | 'multiplayer'
   | 'downloads'
   | 'accounts'
+  | 'toolbox'
   | 'settings';
 const pageLabels: Record<Page, string> = {
   home: '开始游戏',
@@ -60,6 +63,7 @@ const pageLabels: Record<Page, string> = {
   diagnostics: '诊断与维护',
   downloads: '下载任务',
   accounts: '账户管理',
+  toolbox: '工具箱',
   settings: '启动器设置',
 };
 export function App() {
@@ -75,9 +79,16 @@ export function App() {
     [create, setCreate] = useState(false),
     [editing, setEditing] = useState<Instance>();
   const [resourceFiles, setResourceFiles] = useState<ResourceCandidate[]>([]);
+  const [toolboxVisited, setToolboxVisited] = useState(false),
+    [tool, setTool] = useState<ToolId>(),
+    [skinAccountId, setSkinAccountId] = useState<string>(),
+    [seedWorld, setSeedWorld] = useState<WorldRef>();
+  const clearSkinAccount = useCallback(() => setSkinAccountId(undefined), []);
+  const clearSeedWorld = useCallback(() => setSeedWorld(undefined), []);
   const [windowVisible, setWindowVisible] = useState(false);
   const refresh = useCallback(async () => setState(await api.snapshot()), []);
   const navigate = useCallback((next: Page, tab?: WorkspaceTab) => {
+    if (next === 'toolbox') setToolboxVisited(true);
     setPage(next);
     if (isWorkspace(next)) setWorkspaceTab(normalizeWorkspaceTab(next, tab));
   }, []);
@@ -127,6 +138,7 @@ export function App() {
     ['home', Home, '开始游戏'],
     ['instances', Layers, '游戏实例'],
     ['resources', FolderOpen, '资源管理'],
+    ['toolbox', Wrench, '工具箱'],
     ['saves', Archive, '存档管理'],
     ['multiplayer', Users, '陶瓦联机'],
     ['diagnostics', Activity, '诊断与维护'],
@@ -150,7 +162,10 @@ export function App() {
               key={key}
               className={'nav-item ' + (page === key ? 'active' : '')}
               aria-current={page === key ? 'page' : undefined}
-              onClick={() => navigate(key)}
+              onClick={() => {
+                if (key === 'toolbox') setTool(undefined);
+                navigate(key);
+              }}
             >
               <Icon size={18} />
               <span>{label}</span>
@@ -206,7 +221,7 @@ export function App() {
         <main className={page === 'home' ? 'home-main' : undefined}>
           <div className="page-head">
             <div>
-              <h1>{pageLabels[page]}</h1>
+              <h1>{page === 'toolbox' && tool ? toolLabels[tool] : pageLabels[page]}</h1>
             </div>
             <div className="head-actions">
               {page === 'home' ? (
@@ -258,10 +273,38 @@ export function App() {
               onTab={setWorkspaceTab}
               state={state}
               run={run}
+              onSeedMap={(world) => {
+                setSeedWorld(world);
+                setTool('seed-map');
+                navigate('toolbox');
+              }}
             />
           )}
           {page === 'multiplayer' && <MultiplayerPage state={state} run={run} />}
-          {page === 'accounts' && <AccountPage state={state} run={run} />}
+          {page === 'accounts' && (
+            <AccountPage
+              state={state}
+              run={run}
+              onEditSkin={(id) => {
+                setSkinAccountId(id);
+                setTool('skin-editor');
+                navigate('toolbox');
+              }}
+            />
+          )}
+          {toolboxVisited && (
+            <ToolboxPage
+              state={state}
+              run={run}
+              active={page === 'toolbox'}
+              tool={tool}
+              onTool={setTool}
+              skinAccountId={skinAccountId}
+              onSkinImported={clearSkinAccount}
+              world={seedWorld}
+              onWorldImported={clearSeedWorld}
+            />
+          )}
           {page === 'downloads' &&
             (state.tasks.length ? (
               <div className="task-list">
@@ -331,7 +374,14 @@ export function App() {
         )}
       </div>
       {create && <CreateDialog state={state} run={run} onClose={() => setCreate(false)} />}
-      {editing && <EditDialog instance={editing} run={run} onClose={() => setEditing(undefined)} />}
+      {editing && (
+        <EditDialog
+          instance={editing}
+          state={state}
+          run={run}
+          onClose={() => setEditing(undefined)}
+        />
+      )}
       {(error || notice) && (
         <div role={error ? 'alert' : 'status'} className={'toast ' + (error ? 'error' : '')}>
           <span>{error || notice}</span>

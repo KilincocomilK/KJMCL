@@ -1,5 +1,7 @@
 import { useState, useEffect } from 'react';
 import {
+  ArrowDown,
+  ArrowUp,
   ArrowUpRight,
   Check,
   Globe,
@@ -16,11 +18,28 @@ import { type Run, size } from '../ui';
 import { SkinDialog } from '../dialogs/AdvancedDialogs';
 import type { Account } from '../../shared/types';
 import { ThirdPartyLogin } from './ThirdPartyLogin';
-export function AccountPage({ state, run }: { state: Snapshot; run: Run }) {
+export function AccountPage({
+  state,
+  run,
+  onEditSkin,
+}: {
+  state: Snapshot;
+  run: Run;
+  onEditSkin?: (id: string) => void;
+}) {
   const [name, setName] = useState(''),
     [code, setCode] = useState<DeviceCode>(),
     [busy, setBusy] = useState(false),
-    [skin, setSkin] = useState<Account>();
+    [skin, setSkin] = useState<Account>(),
+    [reordering, setReordering] = useState(false);
+  const move = async (id: string, direction: 'up' | 'down') => {
+    setReordering(true);
+    try {
+      await run(() => api.moveAccount({ id, direction }));
+    } finally {
+      setReordering(false);
+    }
+  };
   const loggingIn = state.tasks.some(
     (task) => task.title === 'Microsoft 登录' && task.status === 'running',
   );
@@ -31,7 +50,7 @@ export function AccountPage({ state, run }: { state: Snapshot; run: Run }) {
     <>
       {skin && <SkinDialog account={skin} run={run} onClose={() => setSkin(undefined)} />}
       <div className="account-grid">
-        {state.accounts.map((a) => (
+        {state.accounts.map((a, index) => (
           <article
             key={a.id}
             className={'account-card panel ' + (state.selectedAccountId === a.id ? 'selected' : '')}
@@ -48,6 +67,33 @@ export function AccountPage({ state, run }: { state: Snapshot; run: Run }) {
             <button className="text-button" onClick={() => setSkin(a)}>
               管理皮肤
             </button>
+            {onEditSkin && (
+              <button className="text-button" onClick={() => onEditSkin(a.id)}>
+                编辑皮肤
+              </button>
+            )}
+            {state.accounts.length > 1 && (
+              <div className="row" style={{ justifyContent: 'flex-end', gap: 6 }}>
+                <button
+                  className="icon"
+                  aria-label={'上移账户 ' + a.name}
+                  title="上移"
+                  disabled={reordering || index === 0}
+                  onClick={() => void move(a.id, 'up')}
+                >
+                  <ArrowUp size={15} />
+                </button>
+                <button
+                  className="icon"
+                  aria-label={'下移账户 ' + a.name}
+                  title="下移"
+                  disabled={reordering || index === state.accounts.length - 1}
+                  onClick={() => void move(a.id, 'down')}
+                >
+                  <ArrowDown size={15} />
+                </button>
+              </div>
+            )}
             <div className="row">
               <button
                 className={state.selectedAccountId === a.id ? 'selected-button' : ''}

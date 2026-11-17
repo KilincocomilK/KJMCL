@@ -1,5 +1,5 @@
 import { constants } from 'node:fs';
-import { rm, copyFile, link } from 'node:fs/promises';
+import { rm, copyFile, link, writeFile } from 'node:fs/promises';
 import { randomUUID } from 'node:crypto';
 import type {
   Api,
@@ -7,6 +7,7 @@ import type {
   ContentProject,
   ContentVersion,
   ContentKind,
+  ModAuditEntry,
 } from '../../shared/types';
 import type { Store } from './store';
 import type { Network } from './network';
@@ -17,6 +18,8 @@ import type { Packs } from './packs';
 import type { Work } from './tasks';
 import { inside, hashFile, exists } from './files';
 import { favoriteSchema } from '../../shared/schema';
+import { safeExport } from './safe-export';
+import { modListText } from './mod-list';
 const base = 'https://api.modrinth.com/v2';
 const classes: Record<ContentKind, number> = {
   mod: 6,
@@ -233,6 +236,19 @@ export class Catalog {
       (p) => !(p.source === ref.source && p.projectId === ref.projectId && p.kind === ref.kind),
     );
     this.store.save();
+  }
+  async exportModList(
+    id: string,
+    destination: string,
+    secrets: string[],
+    metadata: ModAuditEntry[],
+  ) {
+    const allowed = new Set(
+      (await this.resources.list(id)).filter((f) => f.kind === 'mods').map((f) => f.name),
+    );
+    const files = (await this.mods.list(id)).filter((f) => allowed.has(f.name));
+    const text = modListText(this.store.instance(id), files, metadata, secrets);
+    await safeExport(destination, (temporary) => writeFile(temporary, text, 'utf8'));
   }
   async install(v: ContentRef & { id: string; versionId: string }, ctx: Work) {
     const project = await this.project(v);

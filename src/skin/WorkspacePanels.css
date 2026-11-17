@@ -1,0 +1,215 @@
+.skin-workspace-panel {
+  min-width: 0;
+  display: grid;
+  gap: 8px;
+}
+.skin-workspace-panel button {
+  min-width: 0;
+}
+.skin-workspace-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px;
+}
+.skin-workspace-actions button {
+  flex: 1 1 auto;
+  padding: 5px 6px;
+}
+.skin-workspace-count {
+  color: #999;
+  margin-left: auto;
+  font-size: 10px;
+}
+.skin-workspace-name {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  min-width: 0;
+}
+.skin-workspace-name > input,
+.skin-workspace-name > .launcher-select {
+  flex: 1;
+  min-width: 0;
+}
+.skin-workspace-name > button {
+  flex: 0 0 auto;
+}
+.skin-workspace-status {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 5px;
+  font-size: 10px;
+  color: #999;
+  min-height: 18px;
+}
+.skin-asset-strip {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 4px;
+}
+.skin-asset-strip > button {
+  aspect-ratio: 1;
+  min-height: 30px;
+  padding: 3px;
+  overflow: hidden;
+}
+.skin-asset-strip canvas,
+.skin-stamp-current canvas,
+.skin-stamp-choice canvas {
+  display: block;
+  image-rendering: pixelated;
+  object-fit: contain;
+  background: repeating-conic-gradient(#292b30 0 25%, #35373e 0 50%) 0/10px 10px;
+}
+.skin-asset-strip canvas {
+  width: 100%;
+  height: 100%;
+}
+.skin-workspace-selected {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  min-width: 0;
+}
+.skin-workspace-selected > span {
+  flex: 1;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  font-size: 11px;
+}
+.skin-workspace-selected > button {
+  border: 0;
+  padding: 3px;
+  min-height: 24px;
+}
+.skin-reference-viewer {
+  min-width: 0;
+  display: grid;
+  gap: 5px;
+}
+.skin-reference-canvas {
+  height: 185px;
+  overflow: hidden;
+  position: relative;
+  border: 1px solid var(--skin-border, #ffffff1a);
+  background: repeating-conic-gradient(#202226 0 25%, #292c31 0 50%) 0/14px 14px;
+  touch-action: none;
+  outline-offset: 2px;
+}
+.skin-reference-canvas.pick {
+  cursor: crosshair;
+}
+.skin-reference-canvas.pan {
+  cursor: grab;
+}
+.skin-reference-canvas.pan:active {
+  cursor: grabbing;
+}
+.skin-reference-image {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  transform-origin: center;
+  pointer-events: none;
+}
+.skin-reference-image canvas {
+  display: block;
+  width: 100%;
+  height: 100%;
+  image-rendering: pixelated;
+}
+.skin-stamp-current {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  min-height: 62px;
+  font-size: 10px;
+  color: #999;
+}
+.skin-stamp-current canvas {
+  width: 58px;
+  height: 58px;
+  border: 1px solid var(--skin-border, #ffffff1a);
+}
+.skin-stamp-list {
+  display: grid;
+  gap: 4px;
+  max-height: 230px;
+  overflow: auto;
+}
+.skin-stamp-list > div {
+  display: flex;
+  gap: 3px;
+  min-width: 0;
+  border: 1px solid transparent;
+}
+.skin-stamp-list > div.active {
+  border-color: #f26b2188;
+  background: #f26b2110;
+}
+.skin-stamp-list > div > button {
+  border: 0;
+  background: none;
+  padding: 4px;
+}
+.skin-stamp-choice {
+  display: flex;
+  align-items: center;
+  flex: 1;
+  justify-content: flex-start;
+  gap: 6px;
+  min-width: 0;
+}
+.skin-stamp-choice canvas {
+  width: 28px;
+  height: 28px;
+  flex: 0 0 28px;
+}
+.skin-stamp-choice span {
+  flex: 1;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  text-align: left;
+}
+.skin-pose-axis {
+  display: grid;
+  grid-template-columns: 1fr 52px;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+}
+.skin-pose-axis > span {
+  grid-column: 1/-1;
+  font-size: 11px;
+  color: #aaa;
+}
+.skin-workspace-panel .skin-pose-axis > input[type='number'] {
+  padding: 4px;
+  width: 52px;
+}
+.skin-workspace-background {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  border-top: 1px solid var(--skin-border, #ffffff1a);
+  padding-top: 8px;
+}
+.skin-workspace-background > label {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  font-size: 11px;
+}
+.skin-workspace-background input[type='color'] {
+  width: 32px;
+  height: 27px;
+  padding: 2px;
+  border: 1px solid var(--skin-border, #ffffff1a);
+  background: none;
+}

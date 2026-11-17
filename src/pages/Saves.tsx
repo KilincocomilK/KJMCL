@@ -22,16 +22,19 @@ import type {
   SaveChunk,
   SavePruneReview,
   SavePatch,
+  WorldRef,
 } from '../../shared/types';
 const dims: Record<string, string> = { overworld: '主世界', the_nether: '下界', the_end: '末地' };
 export function SavesPage({
   state,
   run,
   showInstanceSelect = true,
+  onSeedMap,
 }: {
   state: Snapshot;
   run: Run;
   showInstanceSelect?: boolean;
+  onSeedMap?: (world: WorldRef) => void;
 }) {
   const id = state.selectedInstanceId ?? '',
     [worlds, setWorlds] = useState<SaveMetadata[]>([]),
@@ -199,6 +202,12 @@ export function SavesPage({
                   </small>
                 </div>
                 <div className="save-actions">
+                  {onSeedMap && (
+                    <button disabled={!scan.metadata.seed} onClick={() => onSeedMap({ id, world })}>
+                      <Map size={15} />
+                      种子地图
+                    </button>
+                  )}
                   <button disabled={!stopped || !!busy || hasTask} onClick={() => setEditing(true)}>
                     <Settings2 size={15} />
                     属性

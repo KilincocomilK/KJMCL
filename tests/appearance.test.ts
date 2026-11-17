@@ -147,7 +147,7 @@ describe('appearance contract and migration', () => {
     const original = { ...data, schemaVersion: 5 };
     await writeFile(path.join(root, 'state.json'), JSON.stringify(original));
     const next = new Store(root);
-    expect(next.data.schemaVersion).toBe(6);
+    expect(next.data.schemaVersion).toBe(7);
     expect(next.data.appearance).toEqual({ dim: 32, blur: 0 });
     expect(next.data.accounts).toEqual(original.accounts);
     expect(next.data.gameFolders).toEqual(original.gameFolders);

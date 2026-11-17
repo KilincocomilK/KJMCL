@@ -266,7 +266,7 @@ it('migrates v4 without dropping favorites, copied games, settings or the origin
   delete (old as any).gameFolders;
   await atomicJson(path.join(store.root, 'state.json'), old);
   const reopened = new Store(store.root);
-  expect(reopened.data.schemaVersion).toBe(6);
+  expect(reopened.data.schemaVersion).toBe(7);
   expect(reopened.data.gameFolders).toEqual([]);
   expect(reopened.data.favorites[0].projectId).toBe('kept');
   expect(JSON.parse(await readFile(path.join(store.root, 'state.json.v4.bak'), 'utf8'))).toEqual(

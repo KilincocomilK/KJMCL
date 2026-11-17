@@ -12,6 +12,7 @@ import { clientVersion } from './client-version';
 import { GameLogDecoder } from './game-logs';
 import type { LogLine, LaunchSession } from '../../shared/types';
 import { redact } from './log-redaction';
+import { gameLaunchArguments, launchAccount, prepareLaunchOptions } from './launch-options';
 export { redact } from './log-redaction';
 export class Launcher {
   performance: Performance;
@@ -62,11 +63,13 @@ export class Launcher {
   private async start(id: string, signal: AbortSignal, session: LaunchSession) {
     const i = this.store.instance(id);
     if (i.status !== 'ready') throw new Error('请先完成版本安装');
-    const account = this.store.data.accounts.find(
-      (a) => a.id === this.store.data.selectedAccountId,
+    const account = launchAccount(
+      this.store.data.accounts,
+      this.store.data.selectedAccountId,
+      i.launchOptions,
     );
-    if (!account) throw new Error('请先选择账户');
     const { version: v, client } = await this.mc.resolved(id);
+    const launch = await prepareLaunchOptions(v, this.store.dir(id), i.launchOptions);
     if (i.localRuntime) {
       const version = await clientVersion(path.join(this.store.dir(id), 'client.jar'), i.version);
       if (version !== i.version) {
@@ -96,6 +99,7 @@ export class Launcher {
       client,
     ].join(path.delimiter);
     const vars: Record<string, string> = {
+      ...launch.variables,
       natives_directory: await this.mc.prepareNatives(id, v),
       launcher_name: 'KJMCL',
       launcher_version: VERSION,
@@ -125,15 +129,9 @@ export class Launcher {
         ? v.arguments.jvm
         : ['-Djava.library.path=${natives_directory}', '-cp', '${classpath}'],
       vars,
+      launch.features,
     );
-    const game = expandArguments(
-      v.arguments?.game?.length
-        ? v.arguments.game
-        : (v.minecraftArguments ?? '').split(' ').filter(Boolean),
-      vars,
-    );
-    if (!game.length) throw new Error('版本缺少游戏启动参数');
-    if (!v.arguments?.game) game.push('--width', String(i.width), '--height', String(i.height));
+    const game = gameLaunchArguments(v, vars, launch);
     const injection =
       account.kind === 'yggdrasil' && this.auth.thirdParty
         ? await this.auth.thirdParty.injector(account, signal)

@@ -21,21 +21,26 @@ async function visit(name) {
 }
 for (const name of Object.keys(pkg.dependencies)) await visit(name);
 await visit('electron');
-const rust = JSON.parse(
-  execFileSync(
-    'cargo',
-    [
-      'metadata',
-      '--locked',
-      '--format-version',
-      '1',
-      '--manifest-path',
-      'electron/native/save-manager/Cargo.toml',
-    ],
-    { encoding: 'utf8', windowsHide: true, maxBuffer: 16 * 1024 * 1024 },
-  ),
-);
-for (const p of rust.packages.filter((p) => p.name !== 'kjmcl-save-manager')) {
+const rustPackages = new Map();
+for (const core of ['save-manager', 'seed-map', 'projection']) {
+  const rust = JSON.parse(
+    execFileSync(
+      'cargo',
+      [
+        'metadata',
+        '--locked',
+        '--format-version',
+        '1',
+        '--manifest-path',
+        `electron/native/${core}/Cargo.toml`,
+      ],
+      { encoding: 'utf8', windowsHide: true, maxBuffer: 16 * 1024 * 1024 },
+    ),
+  );
+  for (const p of rust.packages.filter((p) => !p.name.startsWith('kjmcl-')))
+    rustPackages.set(p.id, p);
+}
+for (const p of rustPackages.values()) {
   sections.push(
     `\n${'='.repeat(72)}\nRust: ${p.name} ${p.version} (${p.license ?? 'see license'})\n${p.repository ?? ''}\n`,
   );
@@ -48,5 +53,17 @@ for (const p of rust.packages.filter((p) => p.name !== 'kjmcl-save-manager')) {
         /* license subdirectories are covered by package metadata */
       }
     }
+}
+sections.push(
+  `\n${'='.repeat(72)}\nCubiomes (MIT)\nSource: https://github.com/xpple/cubiomes/tree/b99f6e472018cab903a096697117aab9d9170a19\nUpstream: https://github.com/Cubitect/cubiomes\nUsed by the KJMCL Rust seed-map core. Source files are vendored at the pinned revision.\n`,
+);
+sections.push(await readFile('electron/native/seed-map/vendor/cubiomes/LICENSE', 'utf8'));
+sections.push(
+  `\n${'='.repeat(72)}\nWindows GNU native runtime\nThe Windows x64 seed-map core statically links the GNU/MinGW runtime and uses only Windows system DLLs. GCC runtime distribution is covered by the GCC Runtime Library Exception 3.1.\n`,
+);
+const nativeLicenses = 'electron/native/seed-map/vendor/runtime-licenses';
+for (const file of (await readdir(nativeLicenses)).sort()) {
+  sections.push(`\n${file}\n`);
+  sections.push(await readFile(path.join(nativeLicenses, file), 'utf8'));
 }
 await writeFile('THIRD_PARTY_NOTICES.txt', sections.join('\n').replace(/[\t ]+$/gm, ''));

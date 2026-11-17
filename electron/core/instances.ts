@@ -7,15 +7,7 @@ import {
   existsSync,
   lstatSync,
 } from 'node:fs';
-import {
-  mkdir,
-  readdir,
-  lstat,
-  copyFile,
-  stat,
-  realpath,
-  rm,
-} from 'node:fs/promises';
+import { mkdir, readdir, lstat, copyFile, stat, realpath, rm } from 'node:fs/promises';
 import { randomUUID } from 'node:crypto';
 import { archiveWorld, restoreWorld } from './archives';
 import { GameFolders, assertExternal } from './game-folders';
@@ -118,6 +110,15 @@ export class Instances {
         jvmArgs: [...sourceInstance.jvmArgs],
         width: sourceInstance.width,
         height: sourceInstance.height,
+        launchOptions: sourceInstance.launchOptions
+          ? {
+              ...structuredClone(sourceInstance.launchOptions),
+              target:
+                !includeSaves && sourceInstance.launchOptions.target.kind === 'world'
+                  ? { kind: 'menu' }
+                  : structuredClone(sourceInstance.launchOptions.target),
+            }
+          : undefined,
         status: sourceInstance.status,
         playTime: 0,
       });

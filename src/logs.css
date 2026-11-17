@@ -1,0 +1,37 @@
+.log-toolbar,
+.log-actions {
+  flex-wrap: wrap;
+}
+.log-actions {
+  justify-content: flex-start;
+  gap: 8px;
+}
+.log-actions .launcher-select {
+  min-width: 112px;
+  width: 112px;
+}
+.log-filter-row {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+.log-filter-row .search-input {
+  flex: 1 1 180px;
+}
+.log-filter-row .check {
+  white-space: nowrap;
+}
+.log-console .warn pre {
+  color: #d6b87a;
+}
+.log-console .debug pre {
+  color: #8b8984;
+}
+.log-console.log-nowrap pre {
+  white-space: pre;
+  overflow-wrap: normal;
+}
+.log-console.log-nowrap > div:not(.console-empty) {
+  min-width: max-content;
+}

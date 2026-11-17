@@ -3,12 +3,14 @@ import { mkdtemp, mkdir, writeFile, readFile, rm } from 'node:fs/promises';
 import { realpathSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
+import { writeProjectionFixtures } from '../tests/fixtures/projection-nbt.mjs';
 const control = realpathSync.native(await mkdtemp(path.join(os.tmpdir(), 'kjmcl-storage-ui-')));
 const work = realpathSync.native(
   await mkdtemp(path.join(path.resolve('.local'), 'kjmcl-storage-target-')),
 );
 const target = path.join(work, 'data'),
   external = path.join(work, 'external');
+const projectionFiles = await writeProjectionFixtures(work);
 const env = { ...process.env, KJMCL_DATA_DIR: control };
 delete env.ELECTRON_RUN_AS_NODE;
 delete env.KJMCL_DEV_URL;
@@ -38,6 +40,43 @@ try {
   }, external);
   await mkdir(path.join(control, 'assets'), { recursive: true });
   await writeFile(path.join(control, 'assets/probe'), 'resource-fixture');
+  const projectionDoc = await page.evaluate(
+    (file) => window.kjmcl.projectionImport(file),
+    projectionFiles.litematic,
+  );
+  const mapState = await page.evaluate(async () => {
+    const map = {
+      id: crypto.randomUUID(),
+      name: '迁移地图',
+      seed: '9007199254740993',
+      version: '26.3',
+      dimension: 'overworld',
+      y: 64,
+      largeBiomes: false,
+      centerX: -123.5,
+      centerZ: 456,
+      zoom: 0.5,
+      structures: ['village'],
+      grid: true,
+      slime: false,
+      highlightBiomes: [],
+      markers: [
+        {
+          id: crypto.randomUUID(),
+          name: '营地',
+          x: -123,
+          z: 456,
+          dimension: 'overworld',
+          color: '#f26b21',
+          notes: '迁移保留',
+        },
+      ],
+      modifiedAt: Date.now(),
+    };
+    const state = { schemaVersion: 1, current: map, saved: [map] };
+    await window.kjmcl.seedMapSaveState(state);
+    return state;
+  });
   await writeFile(path.join(external, 'world.txt'), 'world-fixture');
   await page.getByRole('button', { name: '启动器设置', exact: true }).click();
   await app.evaluate(({ dialog }, target) => {
@@ -80,6 +119,13 @@ try {
     Array.from(await readFile(path.join(target, 'credentials/curseforge.vault'))),
   );
   expect(credentialWorks).toBe(true);
+  expect((await page.evaluate(() => window.kjmcl.projectionState())).current).toEqual(
+    projectionDoc,
+  );
+  expect(await page.evaluate(() => window.kjmcl.seedMapState())).toEqual(mapState);
+  expect(JSON.parse(await readFile(path.join(target, 'seed-map/workspace.json'), 'utf8'))).toEqual(
+    mapState,
+  );
   await page.getByRole('button', { name: '启动器设置', exact: true }).click();
   await app.evaluate(({ dialog }) => {
     dialog.showMessageBox = async () => ({ response: 1 });
@@ -90,7 +136,17 @@ try {
     .toBeUndefined();
   expect(await readFile(path.join(control, 'state.json'), 'utf8').catch(() => null)).toBeNull();
   expect(await readFile(path.join(target, 'assets/probe'), 'utf8')).toBe('resource-fixture');
+  expect(
+    await readFile(path.join(control, 'seed-map/workspace.json'), 'utf8').catch(() => null),
+  ).toBeNull();
+  expect(await page.evaluate(() => window.kjmcl.seedMapState())).toEqual(mapState);
   expect(await readFile(path.join(external, 'world.txt'), 'utf8')).toBe('world-fixture');
+  expect(
+    await readFile(path.join(control, 'projection-workshop/index.json'), 'utf8').catch(() => null),
+  ).toBeNull();
+  expect((await page.evaluate(() => window.kjmcl.projectionState())).current).toEqual(
+    projectionDoc,
+  );
   await page.locator('.storage-settings').scrollIntoViewIfNeeded();
   await page.screenshot({ path: '.local/storage-migrated.png' });
   await app.close();

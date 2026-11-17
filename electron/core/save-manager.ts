@@ -5,6 +5,7 @@ import { randomUUID } from 'node:crypto';
 import { Store } from './store';
 import { assertOwned } from './instances';
 import { inside, json, hashFile } from './files';
+import { checkGamePath } from './game-folders';
 import type {
   SaveMetadata,
   SaveScan,
@@ -128,6 +129,14 @@ export class SaveManager {
   async list(id: string) {
     await assertOwned(this.store, id);
     return (await this.invoke<SaveMetadata[]>(path.join(this.store.dir(id), 'saves'), 'list')).data;
+  }
+  async metadata(ref: WorldRef): Promise<SaveMetadata> {
+    return (await this.invoke<SaveMetadata>(await this.world(ref), 'metadata')).data;
+  }
+  async metadataDirectory(root: string): Promise<SaveMetadata> {
+    await checkGamePath(root);
+    await checkGamePath(path.join(root, 'level.dat'));
+    return (await this.invoke<SaveMetadata>(root, 'metadata')).data;
   }
   async scan(ref: WorldRef): Promise<SaveScan> {
     const r = await this.invoke<Omit<SaveScan, 'elapsedMs'>>(await this.world(ref), 'scan');

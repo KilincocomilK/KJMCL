@@ -67,6 +67,30 @@ fn metadata_preserves_large_seed_and_unicode() {
     assert_eq!(m["rules"]["keepInventory"], "false");
 }
 #[test]
+fn metadata_reads_modern_and_legacy_world_generation() {
+    let d = fixture();
+    let modern = nbt!({"Data":{"LevelName":"巨型世界","WorldGenSettings":{"seed":i64::MIN,"dimensions":{"minecraft:overworld":{"generator":{"type":"minecraft:noise","settings":"minecraft:large_biomes"}}}},"SpawnX":-35i32,"SpawnY":70i32,"SpawnZ":10i32}});
+    fs::write(d.path().join("level.dat"), gzip(&modern)).unwrap();
+    let result = crate::run(json!({"protocol":1,"command":"metadata","root":d.path()})).unwrap();
+    assert_eq!(result["data"]["seed"], i64::MIN.to_string());
+    assert_eq!(result["data"]["generation"]["largeBiomes"], true);
+    assert_eq!(
+        result["data"]["generation"]["preset"],
+        "minecraft:large_biomes"
+    );
+    assert_eq!(result["data"]["spawn"]["x"], -35);
+    let legacy = nbt!({"Data":{"RandomSeed":i64::MAX,"generatorName":"largeBiomes"}});
+    fs::write(d.path().join("level.dat"), gzip(&legacy)).unwrap();
+    let result = world::metadata(d.path()).unwrap();
+    assert_eq!(result["seed"], i64::MAX.to_string());
+    assert_eq!(result["generation"]["largeBiomes"], true);
+    let flat = nbt!({"Data":{"WorldGenSettings":{"seed":1i64,"dimensions":{"minecraft:overworld":{"generator":{"type":"minecraft:flat"}}}}}});
+    fs::write(d.path().join("level.dat"), gzip(&flat)).unwrap();
+    let result = world::metadata(d.path()).unwrap();
+    assert_eq!(result["generation"]["largeBiomes"], false);
+    assert_eq!(result["generation"]["preset"], "minecraft:flat");
+}
+#[test]
 fn parallel_scan_reads_headers_and_negative_coordinates() {
     let d = fixture();
     region_file(

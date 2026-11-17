@@ -1,5 +1,5 @@
 import type { KeyboardEvent } from 'react';
-import type { Snapshot } from '../../shared/types';
+import type { Snapshot, WorldRef } from '../../shared/types';
 import { InstanceSelect } from '../components';
 import type { Run } from '../ui';
 import { SavesPage } from './Saves';
@@ -51,12 +51,14 @@ export function ConsolidatedWorkspace({
   onTab,
   state,
   run,
+  onSeedMap,
 }: {
   workspace: WorkspaceId;
   tab: WorkspaceTab;
   onTab: (tab: WorkspaceTab) => void;
   state: Snapshot;
   run: Run;
+  onSeedMap?: (world: WorldRef) => void;
 }) {
   const tabs = WORKSPACE_TABS[workspace],
     active = normalizeWorkspaceTab(workspace, tab),
@@ -105,16 +107,26 @@ export function ConsolidatedWorkspace({
         role="tabpanel"
         aria-labelledby={`${workspace}-tab-${active}`}
       >
-        <WorkspaceContent tab={active} state={state} run={run} />
+        <WorkspaceContent tab={active} state={state} run={run} onSeedMap={onSeedMap} />
       </div>
     </section>
   );
 }
 
-function WorkspaceContent({ tab, state, run }: { tab: WorkspaceTab; state: Snapshot; run: Run }) {
+function WorkspaceContent({
+  tab,
+  state,
+  run,
+  onSeedMap,
+}: {
+  tab: WorkspaceTab;
+  state: Snapshot;
+  run: Run;
+  onSeedMap?: (world: WorldRef) => void;
+}) {
   switch (tab) {
     case 'worlds':
-      return <SavesPage state={state} run={run} showInstanceSelect={false} />;
+      return <SavesPage state={state} run={run} showInstanceSelect={false} onSeedMap={onSeedMap} />;
     case 'backups':
       return <BackupsPage state={state} run={run} showInstanceSelect={false} />;
     case 'performance':
