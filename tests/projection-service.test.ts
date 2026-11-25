@@ -60,12 +60,106 @@ async function setup(initial = fixtureData) {
     root,
     source,
     service: make(),
+    runner,
     make,
     max: () => max,
     index: path.join(root, 'projection-workshop/index.json'),
   };
 }
 describe('projection service persistence and boundaries', () => {
+  it('reuses resource previews across restart and retains edits without touching the source', async () => {
+    const f = await setup(),
+      key = JSON.stringify(['fabric', 'builds/source.litematic']);
+    const first = await f.service.importFile(f.source, key);
+    const edited = await f.service.edit({
+      ...first,
+      op: { kind: 'rename', name: 'work in progress' },
+    });
+    const reopened = await f.make().importFile(f.source, key);
+    expect(reopened).toEqual(edited);
+    expect((await f.make().state()).entries).toHaveLength(1);
+    expect(await readFile(f.source, 'utf8')).toBe('source untouched');
+    expect((await readdir(path.dirname(f.index))).some((name) => name.startsWith('.import-'))).toBe(
+      false,
+    );
+  });
+  it('creates a separate resource project after content or resource identity changes', async () => {
+    const f = await setup(),
+      key = JSON.stringify(['fabric', 'source.litematic']);
+    const first = await f.service.importFile(f.source, key);
+    await writeFile(f.source, 'modified source');
+    const modified = await f.service.importFile(f.source, key);
+    const elsewhere = await f.service.importFile(
+      f.source,
+      JSON.stringify(['older', 'source.litematic']),
+    );
+    expect(new Set([first.id, modified.id, elsewhere.id]).size).toBe(3);
+    expect((await f.service.state()).entries).toHaveLength(3);
+    expect((await f.service.open(first.id)).revision).toBe(first.revision);
+    expect(await readFile(f.source, 'utf8')).toBe('modified source');
+  });
+  it('keeps ordinary imports separate even when the source bytes match', async () => {
+    const f = await setup();
+    const a = await f.service.importFile(f.source),
+      b = await f.service.importFile(f.source);
+    expect(a.id).not.toBe(b.id);
+    expect((await f.service.state()).entries).toHaveLength(2);
+  });
+  it('reopens a known resource when the library is full and preserves it on new-import failure', async () => {
+    const f = await setup(),
+      key = JSON.stringify(['fabric', 'source.litematic']);
+    const first = await f.service.importFile(f.source, key);
+    for (let i = 1; i < 32; i++) await f.service.importFile(f.source);
+    const reopened = await f.service.importFile(f.source, key);
+    expect(reopened.id).toBe(first.id);
+    await expect(f.service.importFile(f.source, 'different resource')).rejects.toThrow('最多保存');
+    expect((await f.service.state()).current?.id).toBe(first.id);
+    expect((await f.service.state()).entries).toHaveLength(32);
+    expect((await readdir(path.dirname(f.index))).some((name) => name.startsWith('.import-'))).toBe(
+      false,
+    );
+  });
+  it('hashes and parses the same bounded resource snapshot while the source is being edited', async () => {
+    const f = await setup(),
+      key = 'resource-snapshot';
+    let copiedInput = '';
+    const service = new ProjectionWorkshop(
+      { root: f.root },
+      'unused boundary',
+      async (command, args) => {
+        if (command === 'import') {
+          copiedInput = String(args.input);
+          await writeFile(f.source, 'changed by another application');
+          expect(await readFile(copiedInput, 'utf8')).toBe('source untouched');
+          expect(path.basename(copiedInput)).toBe(path.basename(f.source));
+        }
+        return f.runner(command, args);
+      },
+    );
+    const first = await service.importFile(f.source, key);
+    expect(copiedInput).not.toBe(f.source);
+    await expect(readFile(copiedInput)).rejects.toThrow();
+    await writeFile(f.source, 'source untouched');
+    expect((await f.make().importFile(f.source, key)).id).toBe(first.id);
+  });
+  it('leaves the current project unchanged and removes temporary input after a failed resource import', async () => {
+    const f = await setup(),
+      first = await f.service.importFile(f.source);
+    const service = new ProjectionWorkshop(
+      { root: f.root },
+      'unused boundary',
+      async (command, args) => {
+        if (command === 'import') throw new Error('暂不支持此投影格式');
+        return f.runner(command, args);
+      },
+    );
+    await expect(service.importFile(f.source, 'unsupported resource')).rejects.toThrow('暂不支持');
+    expect((await f.service.state()).current).toEqual(first);
+    expect((await readdir(path.dirname(f.index))).some((name) => name.startsWith('.import-'))).toBe(
+      false,
+    );
+    expect(await readFile(f.source, 'utf8')).toBe('source untouched');
+  });
   it('leaves the damaged index untouched when backup revisions are unreadable', async () => {
     const f = await setup(),
       first = await f.service.importFile(f.source);

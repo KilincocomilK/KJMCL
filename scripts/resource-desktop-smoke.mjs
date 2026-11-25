@@ -4,12 +4,26 @@ import {
   selectLauncherOption,
 } from './desktop-test-utils.mjs';
 import { _electron as electron, expect } from '@playwright/test';
-import { mkdtemp, mkdir, writeFile, readFile, rm } from 'node:fs/promises';
+import { cp, mkdtemp, mkdir, writeFile, readFile, rm } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import AdmZip from 'adm-zip';
+import {
+  fixtureGeometry,
+  litematicFixture,
+  spongeFixture,
+} from '../tests/fixtures/projection-nbt.mjs';
 const root = await mkdtemp(path.join(os.tmpdir(), 'kjmcl-resource-desktop-'));
 const env = { ...process.env, KJMCL_DATA_DIR: path.join(root, 'data'), TEMP: root, TMP: root };
+try {
+  await cp(
+    path.resolve('.local/projection-render-assets/projection-workshop/assets'),
+    path.join(env.KJMCL_DATA_DIR, 'projection-workshop/assets'),
+    { recursive: true },
+  );
+} catch (error) {
+  if (error.code !== 'ENOENT') throw error;
+}
 delete env.ELECTRON_RUN_AS_NODE;
 delete env.KJMCL_DEV_URL;
 let app;
@@ -87,13 +101,15 @@ try {
   await expect(
     page.locator('.resource-mod-row').getByText('drop.jar', { exact: true }),
   ).toBeVisible();
-  await page.getByLabel('更多操作 drop.jar', { exact: true }).click();
-  await page.getByRole('button', { name: '预览', exact: true }).click();
+  await page.getByRole('button', { name: '预览 drop.jar', exact: true }).click();
   await expect(
     page.getByRole('dialog', { name: 'drop.jar' }).getByText('smoke', { exact: true }),
   ).toBeVisible();
   await page.getByRole('button', { name: '关闭', exact: true }).click();
   await page.getByLabel('更多操作 drop.jar', { exact: true }).click();
+  await expect(
+    page.locator('.resource-menu[open]').getByRole('button', { name: /预览/ }),
+  ).toHaveCount(0);
   await page.getByRole('button', { name: '重命名', exact: true }).click();
   await page.getByLabel('文件名').fill('renamed.jar');
   await page.getByRole('button', { name: '保存', exact: true }).click();
@@ -119,7 +135,7 @@ try {
   );
   const pack = await makeZip('textures.zip', {
     'pack.mcmeta': JSON.stringify({ pack: { pack_format: 34, description: '资源包桌面预览' } }),
-    'pack.png': png,
+    'pack.png': await readFile('build/icon.png'),
   });
   const replay = await makeZip('recording.mcpr', {
     'metaData.json': JSON.stringify({
@@ -155,7 +171,23 @@ try {
       Buffer.from([0, 1, 0]),
     ]),
   );
-  await page.locator('#native-drop-source').setInputFiles([pack, replay, shader, schematic]);
+  const gallery = path.join(root, 'gallery.litematic'),
+    small = path.join(root, 'small.schem');
+  const galleryBytes = litematicFixture();
+  const smallBytes = spongeFixture({
+    dimensions: [3, 2, 2],
+    palette: [
+      { name: 'minecraft:air' },
+      { name: 'minecraft:diamond_block' },
+      { name: 'minecraft:glass' },
+    ],
+    blocks: [1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 2, 0],
+  });
+  await writeFile(gallery, galleryBytes);
+  await writeFile(small, smallBytes);
+  await page
+    .locator('#native-drop-source')
+    .setInputFiles([pack, replay, shader, schematic, gallery, small]);
   await drop();
   await expect(page.getByRole('dialog', { name: '添加资源', exact: true })).toBeVisible();
   await selectLauncherOption(page, '统一目标实例', id);
@@ -165,27 +197,116 @@ try {
   ).toBeVisible();
   await page.getByRole('button', { name: '完成', exact: true }).click();
   for (const [tab, file] of [
+    ['光影包', 'shader.zip'],
     ['资源包', 'textures.zip'],
     ['Replay 录像', 'recording.mcpr'],
-    ['投影原理图', 'build.schematic'],
   ]) {
     await page.getByRole('tab', { name: new RegExp('^' + tab + '\\s*1$') }).click();
     await expect(page.locator('.resource-row').getByText(file, { exact: true })).toBeVisible();
-    await page.getByLabel('更多操作 ' + file, { exact: true }).click();
-    await page.getByRole('button', { name: '预览', exact: true }).click();
+    if (file === 'textures.zip') {
+      await expect(page.locator('.resource-row .local-resource-art img')).toHaveJSProperty(
+        'naturalWidth',
+        64,
+      );
+      await page.getByLabel('搜索资源').fill('桌面 textures');
+      await expect(page.getByText(file, { exact: true })).toBeVisible();
+      await page.getByLabel('搜索资源').fill('');
+    }
+    await page.getByRole('button', { name: '预览 ' + file, exact: true }).click();
     const modal = page.getByRole('dialog', { name: file, exact: true });
     await expect(modal).toBeVisible();
-    if (tab === '投影原理图') {
-      await expect(modal.locator('canvas')).toBeVisible();
-      expect(
-        await modal
-          .locator('canvas')
-          .evaluate((c) => c.getContext('2d').getImageData(1, 0, 1, 1).data[3]),
-      ).toBe(255);
-      await page.screenshot({ path: '.local/schematic-preview-v040.png' });
-    } else await expect(modal.getByAltText('资源缩略图')).toBeVisible();
+    if (file === 'shader.zip') await expect(modal.getByText('文件大小')).toBeVisible();
+    else await expect(modal.getByAltText('资源缩略图')).toBeVisible();
     await page.getByRole('button', { name: '关闭', exact: true }).click();
   }
+  // The resource list now opens the real shared workshop, including an already-mounted instance.
+  const workshop = () => page.getByLabel('投影工坊', { exact: true });
+  const projectionState = () => page.evaluate(() => window.kjmcl.projectionState());
+  const ready = async () => {
+    await expect(workshop()).toBeVisible();
+    await expect(workshop().locator('.projection-viewport')).toHaveAttribute(
+      'data-render-status',
+      'ready',
+      { timeout: 180000 },
+    );
+    await expect
+      .poll(async () =>
+        Number(await workshop().locator('.projection-viewport').getAttribute('data-render-quads')),
+      )
+      .toBeGreaterThan(0);
+  };
+  const previewProjection = async (file) => {
+    await page.getByRole('button', { name: '预览 ' + file, exact: true }).click();
+    await ready();
+    await expect(page.getByRole('dialog', { name: file, exact: true })).toHaveCount(0);
+  };
+  const returnToResources = async (query) => {
+    await page.getByRole('button', { name: '返回资源管理', exact: true }).click();
+    await expect(page.getByRole('heading', { name: '资源管理', exact: true })).toBeVisible();
+    await expect(page.getByRole('tab', { name: /^投影原理图\s*3$/ })).toHaveAttribute(
+      'aria-selected',
+      'true',
+    );
+    await expect(page.getByLabel('搜索资源', { exact: true })).toHaveValue(query);
+    await expect(
+      page
+        .locator('.launcher-select')
+        .filter({ has: page.getByRole('combobox', { name: '选择实例', exact: true }) })
+        .locator('select'),
+    ).toHaveValue(id);
+  };
+  await page.getByRole('tab', { name: /^投影原理图\s*3$/ }).click();
+  await page.getByLabel('搜索资源', { exact: true }).fill('gallery');
+  await previewProjection('gallery.litematic');
+  const firstProjection = (await projectionState()).current;
+  expect(firstProjection.dimensions).toEqual([8, 5, 7]);
+  expect(firstProjection.nonAir).toBe(101);
+  await page.screenshot({ path: '.local/resource-projection-workshop.png' });
+  await returnToResources('gallery');
+  await previewProjection('gallery.litematic');
+  expect((await projectionState()).current.id).toBe(firstProjection.id);
+  expect((await projectionState()).entries).toHaveLength(1);
+  await returnToResources('gallery');
+  await page.getByLabel('搜索资源', { exact: true }).fill('');
+  await previewProjection('small.schem');
+  const secondProjection = (await projectionState()).current;
+  expect(secondProjection.id).not.toBe(firstProjection.id);
+  expect(secondProjection.dimensions).toEqual([3, 2, 2]);
+  expect(secondProjection.nonAir).toBe(3);
+  await expect(workshop().locator('.projection-summary')).toContainText('3 × 2 × 2');
+  await ready();
+  const installedGallery = path.join(
+    env.KJMCL_DATA_DIR,
+    'instances',
+    id,
+    'schematics',
+    'gallery.litematic',
+  );
+  expect(await readFile(installedGallery)).toEqual(galleryBytes);
+  expect(
+    await readFile(path.join(env.KJMCL_DATA_DIR, 'instances', id, 'schematics', 'small.schem')),
+  ).toEqual(smallBytes);
+  await returnToResources('');
+  // Unsupported legacy files remain manageable; a failed preview must not replace the current work.
+  await page.getByRole('button', { name: '预览 build.schematic', exact: true }).click();
+  await expect(page.getByRole('alert')).toContainText(/暂不支持|NBT|schematic/i);
+  await expect(page.getByRole('dialog', { name: 'build.schematic', exact: true })).toHaveCount(0);
+  await expect(page.getByRole('heading', { name: '资源管理', exact: true })).toBeVisible();
+  expect((await projectionState()).current.id).toBe(secondProjection.id);
+  await page.getByRole('button', { name: '关闭提示', exact: true }).click();
+  // A resource changed on disk opens a new managed work instead of displaying a stale cached import.
+  const changedGallery = fixtureGeometry();
+  changedGallery.blocks[0] = 0;
+  await writeFile(installedGallery, litematicFixture(changedGallery));
+  await page.getByRole('button', { name: '刷新资源', exact: true }).click();
+  await previewProjection('gallery.litematic');
+  const changedProjection = (await projectionState()).current;
+  expect(changedProjection.id).not.toBe(firstProjection.id);
+  expect(changedProjection.nonAir).toBe(100);
+  expect((await projectionState()).entries).toHaveLength(3);
+  await expect(workshop().locator('.projection-summary')).toContainText('100 方块');
+  await ready();
+  await returnToResources('');
   await page.getByRole('button', { name: '陶瓦联机', exact: true }).click();
   await expect(page.getByRole('button', { name: '创建房间', exact: true })).toBeDisabled();
   await expect(page.getByText(/Terracotta \/ 陶瓦联机 ©/)).toBeVisible();
@@ -239,7 +360,7 @@ try {
   }
   expect(errors).toEqual([]);
   console.log(
-    'PASS native file drop across four pages, metadata recommendation, import, resource preview/rename/isolation, multiplayer UI and preload',
+    'PASS native drops, resource previews/rename/isolation, resource-to-workshop textured preview, retained list context, import reuse/change detection, legacy failure preservation, multiplayer UI and preload',
   );
 } finally {
   if (app) {

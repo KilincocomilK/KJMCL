@@ -60,7 +60,11 @@ export class VideoSettings {
     const values = await this.read(id)
       .then(optionValues)
       .catch(() => ({}));
-    return { values, canRestore: await exists(this.paths(id).undo) };
+    return { values, canRestore: await this.canRestore(id) };
+  }
+  canRestore(id: string) { return exists(this.paths(id).undo); }
+  async values(id: string) {
+    return optionValues(await this.read(id));
   }
   private async write(id: string, original: string, next: string) {
     const { options } = this.paths(id),
@@ -79,11 +83,16 @@ export class VideoSettings {
     }
   }
   async apply(id: string, preset: keyof typeof presets) {
+    return this.applyValues(id, presets[preset]);
+  }
+  async applyValues(id: string, values: Record<string, string>, expected?: Record<string, string>) {
     const text = await this.read(id),
       current = optionValues(text),
       after: Record<string, string> = {},
       before: Record<string, string> = {};
-    for (const [k, v] of Object.entries(presets[preset]))
+    if (expected && Object.entries(expected).some(([key, v]) => current[key] !== v))
+      throw new Error('视频设置已变化，请重新生成修改');
+    for (const [k, v] of Object.entries(values))
       if (Object.hasOwn(current, k) && current[k] !== v) {
         before[k] = current[k];
         after[k] = v;
@@ -104,12 +113,16 @@ export class VideoSettings {
       throw e;
     }
   }
-  async restore(id: string) {
+  async restore(id: string, expected?: Pick<Undo, 'before' | 'after'>) {
     const file = this.paths(id).undo,
       undo = await json<Undo>(file),
       text = await this.read(id),
       current = optionValues(text);
     if (undo.schemaVersion !== 1) throw new Error('不支持的视频设置备份');
+    if (expected && (['before', 'after'] as const).some((part) =>
+      Object.keys(undo[part]).length !== Object.keys(expected[part]).length ||
+      Object.entries(expected[part]).some(([key, v]) => undo[part][key] !== v)))
+      throw new Error('视频设置备份已变化，请在性能诊断页核对');
     for (const [k, v] of Object.entries(undo.after))
       if (current[k] !== v && current[k] !== undo.before[k])
         throw new Error('预设字段已在游戏中修改；为保留这些修改，本次未还原');

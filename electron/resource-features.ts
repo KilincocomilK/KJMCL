@@ -1,14 +1,17 @@
+import { showSystemDialog } from './system-dialog';
 import { dialog, shell, type BrowserWindow } from 'electron';
 import { copyFile } from 'node:fs/promises';
 import path from 'node:path';
 import type { Api, ResourceImportResult } from '../shared/types';
 import type { Resources } from './core/resources';
+import type { LocalResourceCards } from './core/resource-cards';
 import type { Terracotta } from './core/terracotta';
 import type { Tasks } from './core/tasks';
 
 export function resourceHandlers(c: {
   window: () => BrowserWindow;
   resources: Resources;
+  cards: LocalResourceCards;
   terracotta: Terracotta;
   tasks: Tasks;
   writable: (id: string) => Promise<void>;
@@ -34,7 +37,8 @@ export function resourceHandlers(c: {
       for (const choice of choices) {
         try {
           await c.writable(choice.id);
-          result.push(await tasks.exclusive(choice.id, () => r.importOne(choice)));
+          const title = '导入 ' + (r.importName(choice.token) ?? '游戏资源');
+          result.push(await tasks.run(title, choice.id, (ctx) => r.importOne(choice, ctx)));
         } catch (e) {
           result.push({
             name: choice.token,
@@ -47,6 +51,7 @@ export function resourceHandlers(c: {
       return result;
     },
     resources: (id) => r.list(id),
+    localResourceCards: (v) => c.cards.list(v.id, v.kind, v.names),
     previewResource: (v) => r.preview(v.id, v.kind, v.name),
     renameResource: async (v) => {
       await c.writable(v.id);
@@ -55,8 +60,7 @@ export function resourceHandlers(c: {
     },
     deleteResource: async (v) => {
       await c.writable(v.id);
-      const result = await dialog.showMessageBox(c.window(), {
-        type: 'warning',
+      const result = await showSystemDialog(c.window(), {
         message: `将“${v.name}”移入回收站？`,
         buttons: ['取消', '移入回收站'],
         defaultId: 0,
@@ -78,7 +82,7 @@ export function resourceHandlers(c: {
     },
     terracottaStatus: () => t.status(),
     installTerracotta: async () =>
-      tasks.start('安装陶瓦联机', 'terracotta', (ctx) => t.install(ctx)),
+      tasks.start('安装陶瓦联机', 'terracotta', (ctx) => t.install(ctx), 'download'),
     startTerracotta: () => tasks.exclusive('terracotta', () => t.start()),
     controlTerracotta: (v) => tasks.exclusive('terracotta', () => t.control(v)),
   } satisfies Pick<
@@ -87,6 +91,7 @@ export function resourceHandlers(c: {
     | 'pickResources'
     | 'importResources'
     | 'resources'
+    | 'localResourceCards'
     | 'previewResource'
     | 'renameResource'
     | 'deleteResource'

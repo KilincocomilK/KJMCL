@@ -1,3 +1,4 @@
+import { matchesSearch } from '../../shared/search';
 import { Select } from '../Select';
 import { useState, useEffect, type FormEvent } from 'react';
 import { Download, FolderOpen, LoaderCircle, RefreshCw, Trash2, Upload } from 'lucide-react';
@@ -34,7 +35,7 @@ export function CreateDialog({
       (v.type === 'release' ||
         (snap && v.type === 'snapshot') ||
         (old && ['old_alpha', 'old_beta'].includes(v.type))) &&
-      v.id.toLowerCase().includes(versionQuery.trim().toLowerCase()),
+      matchesSearch(versionQuery, v.id, v.type),
   );
   useEffect(() => {
     if (versions.length && !visibleVersions.some((v) => v.id === version))
@@ -397,7 +398,7 @@ export function EditDialog({
                     if (i.external) await api.refreshGameFolder(i.external.folderId);
                     else await api.install(i.id);
                   },
-                  i.external ? '已刷新版本索引' : '已开始校验安装',
+                  i.external ? '已刷新版本索引' : undefined,
                 )
               }
             >

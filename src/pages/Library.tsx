@@ -1,94 +1,54 @@
-import { Select } from '../Select';
-import { useState } from 'react';
+import { matchesSearch } from '../../shared/search';
+import { useEffect, useId, useRef, useState } from 'react';
 import {
   ArrowRight,
-  Box,
-  Star,
-  List,
-  LayoutGrid,
-  MoreHorizontal,
-  Tag,
+  ChevronDown,
   FolderOpen,
+  List,
   Plus,
   RefreshCw,
+  Search,
+  Settings2,
+  SlidersHorizontal,
+  Star,
+  Tag,
+  Upload,
   X,
 } from 'lucide-react';
-import type { Instance, InstanceOrganization, Snapshot, MinecraftScan } from '../../shared/types';
-import { ImportDialog } from '../dialogs/AdvancedDialogs';
-import '../game-folders.css';
+import type { Instance, InstanceOrganization, Snapshot } from '../../shared/types';
 import { api } from '../api';
 import { Modal, Empty, Field } from '../components';
+import { ItemArt } from '../components/ItemArt';
+import { SplitView } from '../components/SplitView';
+import { Select } from '../Select';
 import { type Run, loaderLabel, statusLabel, date } from '../ui';
+import '../game-folders.css';
+
 const blank: InstanceOrganization = { favorite: false, group: '', tags: [], notes: '' };
-export function InstanceCard({
-  i,
-  state,
-  run,
-  onEdit,
-}: {
-  i: Instance;
-  state: Snapshot;
-  run: Run;
-  onEdit: () => void;
-}) {
-  const selected = state.selectedInstanceId === i.id;
-  return (
-    <article className={'instance-card panel ' + (selected ? 'selected' : '')}>
-      <div className="row">
-        <div className={'instance-art ' + i.loader}>
-          <Box size={27} />
-        </div>
-        <button className="icon" aria-label={i.name + ' 设置'} onClick={onEdit}>
-          <MoreHorizontal size={21} />
-        </button>
-      </div>
-      <button
-        className="instance-name"
-        onClick={() => void run(() => api.select({ instanceId: i.id }))}
-      >
-        {i.name}
-        {selected && <span className="selected-dot" />}
-      </button>
-      <div className="instance-meta">
-        {i.version}
-        <span>/</span>
-        {loaderLabel[i.loader]} {i.loaderVersion ?? ''}
-      </div>
-      <div className="card-bottom">
-        <span>
-          {state.running.includes(i.id)
-            ? '运行中'
-            : i.status !== 'ready'
-              ? statusLabel[i.status]
-              : null}
-        </span>
-        <button
-          className="text-button"
-          onClick={() => void run(() => api.select({ instanceId: i.id }), '已选择 ' + i.name)}
-        >
-          {selected ? '当前实例' : '选择'}
-          <ArrowRight size={15} />
-        </button>
-      </div>
-    </article>
-  );
-}
 export function LibraryPage({
   state,
   run,
   onEdit,
+  onCreate,
+  onHome,
+  pickingFolder,
+  onPickFolder,
 }: {
   state: Snapshot;
   run: Run;
   onEdit: (i: Instance) => void;
+  onCreate: () => void;
+  onHome: () => void;
+  pickingFolder: boolean;
+  onPickFolder: () => void;
 }) {
   const [query, setQuery] = useState(''),
     [group, setGroup] = useState(''),
     [favorites, setFavorites] = useState(false),
-    [view, setView] = useState<'cards' | 'list'>('cards'),
+    [compact, setCompact] = useState(false),
+    [filterOpen, setFilterOpen] = useState(false),
     [sort, setSort] = useState('recent'),
     [editing, setEditing] = useState<Instance>();
-  const [scan, setScan] = useState<MinecraftScan>();
   const selectedFolder = state.gameFolders.find((f) => f.id === state.selectedGameFolderId);
   const folderInstances = state.instances.filter((i) =>
     selectedFolder ? i.external?.folderId === selectedFolder.id : !i.external,
@@ -101,10 +61,15 @@ export function LibraryPage({
       (i) =>
         (!favorites || i.organization?.favorite) &&
         (!group || i.organization?.group === group) &&
-        [i.name, i.version, i.loader, i.organization?.notes, ...(i.organization?.tags ?? [])]
-          .join(' ')
-          .toLowerCase()
-          .includes(query.toLowerCase()),
+        matchesSearch(
+          query,
+          i.name,
+          i.version,
+          i.loader,
+          i.organization?.group,
+          i.organization?.notes,
+          ...(i.organization?.tags ?? []),
+        ),
     )
     .sort((a, b) => {
       const pinned =
@@ -118,213 +83,289 @@ export function LibraryPage({
             ? b.createdAt - a.createdAt
             : (b.lastPlayed ?? 0) - (a.lastPlayed ?? 0);
     });
+  const current = items.find((i) => i.id === state.selectedInstanceId) ?? items[0];
+  const filtered = !!(query || group || favorites);
+  const clearFilters = () => {
+    setQuery('');
+    setGroup('');
+    setFavorites(false);
+  };
   return (
-    <div className="game-library">
-      <aside className="game-folders" aria-label="游戏文件夹">
-        <div className="nav-caption">游戏文件夹</div>
-        <button
-          className={'game-folder ' + (!selectedFolder ? 'selected' : '')}
-          aria-pressed={!selectedFolder}
-          onClick={() => void run(() => api.select({ folderId: 'managed' }))}
-        >
-          <FolderOpen size={19} />
-          <span>
-            <strong>KJMCL 实例</strong>
-            <small>{state.instances.filter((i) => !i.external).length} 个实例</small>
-          </span>
-        </button>
-        {state.gameFolders.map((folder) => (
-          <div className="game-folder-row" key={folder.id}>
-            <button
-              className={'game-folder ' + (selectedFolder?.id === folder.id ? 'selected' : '')}
-              aria-pressed={selectedFolder?.id === folder.id}
-              onClick={() => void run(() => api.select({ folderId: folder.id }))}
-              title={folder.path}
-            >
-              <FolderOpen size={19} />
-              <span>
-                <strong>{folder.name}</strong>
-                <small>{folder.path}</small>
-              </span>
-            </button>
-            <button
-              className="icon remove-folder"
-              aria-label={'移除文件夹索引 ' + folder.name}
-              onClick={() => void run(() => api.removeGameFolder(folder.id))}
-            >
-              <X size={15} />
-            </button>
-          </div>
-        ))}
-        <button
-          className="text-button add-game-folder"
-          onClick={() =>
-            void run(async () => {
-              const result = await api.scanMinecraft();
-              if (result) setScan(result);
-            })
-          }
-        >
-          <Plus size={16} />
-          添加游戏文件夹
-        </button>
-      </aside>
-      <section className="game-folder-content">
-        <div className="folder-heading">
-          <div>
-            <h2>{selectedFolder?.name ?? 'KJMCL 实例'}</h2>
-            <p className="path-value">{selectedFolder?.path ?? '由 KJMCL 创建和管理的实例'}</p>
-          </div>
+    <>
+      <SplitView
+        className="game-library"
+        railLabel="游戏版本"
+        rail={
+          <>
+            <div className="pane-heading">
+              <h2>{selectedFolder?.name ?? '游戏版本'}</h2>
+              <button className="icon" aria-label="新建实例" title="新建实例" onClick={onCreate}>
+                <Plus size={18} />
+              </button>
+            </div>
+            <div className="rail-search">
+              <label className="search-input">
+                <Search size={15} />
+                <input
+                  aria-label="搜索实例"
+                  placeholder="搜索版本"
+                  value={query}
+                  onChange={(e) => setQuery(e.target.value)}
+                />
+              </label>
+              <button
+                className="icon"
+                aria-label="筛选实例"
+                title="筛选实例"
+                aria-expanded={filterOpen}
+                aria-controls="version-filters"
+                onClick={() => setFilterOpen(!filterOpen)}
+              >
+                <SlidersHorizontal size={16} />
+              </button>
+            </div>
+            <div id="version-filters" className="rail-filters" hidden={!filterOpen}>
+              <Select
+                aria-label="实例分组"
+                value={group}
+                onChange={(e) => setGroup(e.target.value)}
+              >
+                <option value="">全部分组</option>
+                {groups.map((g) => (
+                  <option key={g}>{g}</option>
+                ))}
+              </Select>
+              <Select aria-label="实例排序" value={sort} onChange={(e) => setSort(e.target.value)}>
+                <option value="recent">最近游玩</option>
+                <option value="name">名称</option>
+                <option value="time">游玩时长</option>
+                <option value="created">创建时间</option>
+              </Select>
+              <div className="rail-filter-actions">
+                <button aria-pressed={favorites} onClick={() => setFavorites(!favorites)}>
+                  <Star size={14} />
+                  只看收藏
+                </button>
+                <button
+                  aria-label="切换实例视图"
+                  title="紧凑列表"
+                  aria-pressed={compact}
+                  onClick={() => setCompact(!compact)}
+                >
+                  <List size={16} />
+                </button>
+              </div>
+            </div>
+            <div className={'rail-list' + (compact ? ' compact' : '')}>
+              {items.map((i) => (
+                <button
+                  key={i.id}
+                  className="rail-option"
+                  aria-label={i.name}
+                  aria-pressed={i.id === current?.id}
+                  onClick={() => void run(() => api.select({ instanceId: i.id }))}
+                >
+                  <ItemArt name={i.loader === 'vanilla' ? 'block' : 'pickaxe'} size={32} />
+                  <span>
+                    <strong>{i.name}</strong>
+                    {!compact && (
+                      <small>
+                        {i.version} · {loaderLabel[i.loader]}
+                      </small>
+                    )}
+                  </span>
+                  {i.organization?.favorite && <Star size={12} className="favorite-star" />}
+                </button>
+              ))}
+              {!items.length && (
+                <p className="rail-empty">{filtered ? '没有匹配的版本' : '暂无版本'}</p>
+              )}
+            </div>
+            <div className="rail-footer">
+              <Select
+                aria-label="游戏文件夹"
+                value={selectedFolder?.id ?? 'managed'}
+                onChange={(e) => {
+                  clearFilters();
+                  void run(() => api.select({ folderId: e.target.value }));
+                }}
+              >
+                <option value="managed">KJMCL 实例</option>
+                {state.gameFolders.map((folder) => (
+                  <option key={folder.id} value={folder.id}>
+                    {folder.name}
+                  </option>
+                ))}
+              </Select>
+              <div className="rail-folder-actions">
+                <button className="text-button" disabled={pickingFolder} onClick={onPickFolder}>
+                  <FolderOpen size={15} />
+                  添加游戏文件夹
+                </button>
+                {selectedFolder && (
+                  <>
+                    <button
+                      className="icon"
+                      aria-label="刷新版本"
+                      title="刷新版本"
+                      onClick={() =>
+                        void run(() => api.refreshGameFolder(selectedFolder.id), '已刷新游戏文件夹')
+                      }
+                    >
+                      <RefreshCw size={14} />
+                    </button>
+                    <button
+                      className="icon"
+                      aria-label={'移除文件夹索引 ' + selectedFolder.name}
+                      title="移除文件夹索引"
+                      onClick={() => void run(() => api.removeGameFolder(selectedFolder.id))}
+                    >
+                      <X size={15} />
+                    </button>
+                  </>
+                )}
+              </div>
+            </div>
+          </>
+        }
+      >
+        <div className="detail-toolbar">
           {selectedFolder && (
-            <button
-              onClick={() =>
-                void run(() => api.refreshGameFolder(selectedFolder.id), '已刷新游戏文件夹')
-              }
-            >
-              <RefreshCw size={16} />
-              刷新版本
-            </button>
+            <span className="folder-path" title={selectedFolder.path}>
+              {selectedFolder.path}
+            </span>
           )}
+          <button onClick={() => void run(() => api.importPack())}>
+            <Upload size={15} />
+            导入整合包
+          </button>
         </div>
         {selectedFolder?.error && (
-          <p role="alert" className="inline-error">
+          <p className="inline-error" role="alert">
             文件夹暂不可用：{selectedFolder.error}
           </p>
         )}
-        <div className="toolbar library-filters">
-          <input
-            aria-label="搜索实例"
-            placeholder="名称、标签、版本…"
-            value={query}
-            onChange={(e) => setQuery(e.target.value)}
-          />
-          <Select aria-label="实例分组" value={group} onChange={(e) => setGroup(e.target.value)}>
-            <option value="">全部分组</option>
-            {groups.map((g) => (
-              <option key={g}>{g}</option>
-            ))}
-          </Select>
-          <Select aria-label="实例排序" value={sort} onChange={(e) => setSort(e.target.value)}>
-            <option value="recent">最近游玩</option>
-            <option value="name">名称</option>
-            <option value="time">游玩时长</option>
-            <option value="created">创建时间</option>
-          </Select>
-          <button aria-pressed={favorites} onClick={() => setFavorites(!favorites)}>
-            <Star size={16} />
-            只看收藏
-          </button>
-          <button
-            aria-label="切换实例视图"
-            onClick={() => setView(view === 'cards' ? 'list' : 'cards')}
-          >
-            {view === 'cards' ? <List size={17} /> : <LayoutGrid size={17} />}
-          </button>
-        </div>
-        <div className="library-stats">
-          <span>{folderInstances.length} 个版本</span>
-          <span>
-            累计 {Math.floor(folderInstances.reduce((n, i) => n + i.playTime, 0) / 3600000)} 小时
-          </span>
-          <span>收藏 {folderInstances.filter((i) => i.organization?.favorite).length} 个</span>
-        </div>
-        <div className={view === 'cards' ? 'instance-grid' : 'instance-list'}>
-          {items.map((i) => (
-            <article
-              key={i.id}
-              className={
-                'instance-card panel ' + (state.selectedInstanceId === i.id ? 'selected' : '')
-              }
-            >
-              <div className="row">
-                <div className={'instance-art ' + i.loader}>
-                  <Box size={27} />
-                </div>
-                <div className="row">
-                  <button
-                    className="icon"
-                    aria-label={'收藏 ' + i.name}
-                    aria-pressed={!!i.organization?.favorite}
-                    onClick={() =>
-                      void run(() =>
-                        api.organizeInstance({
-                          id: i.id,
-                          organization: {
-                            ...blank,
-                            ...i.organization,
-                            favorite: !i.organization?.favorite,
-                          },
-                        }),
-                      )
-                    }
-                  >
-                    <Star size={18} fill={i.organization?.favorite ? 'currentColor' : 'none'} />
-                  </button>
-                  <button
-                    className="icon"
-                    aria-label={i.name + ' 分组与备注'}
-                    onClick={() => setEditing(i)}
-                  >
-                    <Tag size={18} />
-                  </button>
-                  <button className="icon" aria-label={i.name + ' 设置'} onClick={() => onEdit(i)}>
-                    <MoreHorizontal size={21} />
-                  </button>
-                </div>
+        {current ? (
+          <section key={current.id} className="version-detail">
+            <div className="version-cover">
+              <div className="version-emblem">
+                <ItemArt name={current.loader === 'vanilla' ? 'block' : 'pickaxe'} size={64} />
+              </div>
+              <div>
+                <h2>{current.name}</h2>
+                <p>
+                  {current.version} · {loaderLabel[current.loader]} {current.loaderVersion}
+                </p>
               </div>
               <button
-                className="instance-name"
-                onClick={() => void run(() => api.select({ instanceId: i.id }))}
+                className="icon"
+                title="收藏"
+                aria-label={'收藏 ' + current.name}
+                aria-pressed={!!current.organization?.favorite}
+                onClick={() =>
+                  void run(() =>
+                    api.organizeInstance({
+                      id: current.id,
+                      organization: {
+                        ...blank,
+                        ...current.organization,
+                        favorite: !current.organization?.favorite,
+                      },
+                    }),
+                  )
+                }
               >
-                {i.name}
-                {state.selectedInstanceId === i.id && <span className="selected-dot" />}
+                <Star size={19} fill={current.organization?.favorite ? 'currentColor' : 'none'} />
               </button>
-              <div className="instance-meta">
-                {i.version} / {loaderLabel[i.loader]} {i.loaderVersion ?? ''}
+            </div>
+            <div className="version-actions">
+              <button
+                className="primary"
+                onClick={() => {
+                  if (state.selectedInstanceId === current.id) onHome();
+                  else
+                    void run(async () => {
+                      await api.select({ instanceId: current.id });
+                      onHome();
+                    });
+                }}
+              >
+                前往启动 <ArrowRight size={16} />
+              </button>
+              <button aria-label={current.name + ' 设置'} onClick={() => onEdit(current)}>
+                <Settings2 size={16} />
+                实例设置
+              </button>
+              <button
+                title="分组与备注"
+                aria-label={current.name + ' 分组与备注'}
+                onClick={() => setEditing(current)}
+              >
+                <Tag size={15} />
+                整理
+              </button>
+            </div>
+            {current.error && (
+              <p role="alert" className="inline-error">
+                {current.error}
+              </p>
+            )}
+            <dl className="version-facts">
+              <div>
+                <dt>状态</dt>
+                <dd>
+                  {state.running.includes(current.id) ? '运行中' : statusLabel[current.status]}
+                </dd>
               </div>
-              <div className="library-tags">
-                {i.organization?.group && <b>{i.organization.group}</b>}
-                {i.organization?.tags.map((t) => (
-                  <span key={t}>{t}</span>
-                ))}
+              <div>
+                <dt>最近启动</dt>
+                <dd>{date(current.lastPlayed)}</dd>
               </div>
-              <small className="muted">
-                最近 {date(i.lastPlayed)} · 游玩 {Math.floor(i.playTime / 60000)} 分钟
-              </small>
-              {i.external && (
-                <small className="external-location" title={i.gameDir}>
-                  <FolderOpen size={13} />
-                  {i.gameDir === selectedFolder?.path ? '共享游戏目录' : '独立运行目录'}
-                </small>
+              <div>
+                <dt>游玩时长</dt>
+                <dd>{Math.floor(current.playTime / 60000)} 分钟</dd>
+              </div>
+              {current.organization?.group && (
+                <div>
+                  <dt>分组</dt>
+                  <dd>{current.organization.group}</dd>
+                </div>
               )}
-              {i.error && <small className="inline-error">{i.error}</small>}
-              {view === 'list' && i.organization?.notes && (
-                <p className="library-note">{i.organization.notes}</p>
+              {!!current.organization?.tags.length && (
+                <div>
+                  <dt>标签</dt>
+                  <dd>{current.organization.tags.join(' · ')}</dd>
+                </div>
               )}
-              <div className="card-bottom">
-                <span>
-                  {state.running.includes(i.id)
-                    ? '运行中'
-                    : i.status !== 'ready'
-                      ? statusLabel[i.status]
-                      : null}
-                </span>
-                <button
-                  className="text-button"
-                  onClick={() =>
-                    void run(() => api.select({ instanceId: i.id }), '已选择 ' + i.name)
-                  }
-                >
-                  {state.selectedInstanceId === i.id ? '当前实例' : '选择'}
-                  <ArrowRight size={15} />
-                </button>
-              </div>
-            </article>
-          ))}
-        </div>
-        {!items.length && <Empty title="没有符合条件的实例" />}
-      </section>
-      {scan && <ImportDialog scan={scan} run={run} onClose={() => setScan(undefined)} />}
+              {current.organization?.notes && (
+                <div>
+                  <dt>备注</dt>
+                  <dd>{current.organization.notes}</dd>
+                </div>
+              )}
+            </dl>
+            {current.external && (
+              <details className="minor-details">
+                <summary>游戏目录</summary>
+                <p>
+                  {current.gameDir === selectedFolder?.path ? '共享游戏目录' : '独立运行目录'} ·{' '}
+                  {current.gameDir}
+                </p>
+              </details>
+            )}
+          </section>
+        ) : (
+          <Empty
+            art={filtered ? 'map' : 'block'}
+            title={filtered ? '没有符合条件的实例' : '还没有游戏实例'}
+            action={
+              <button className="primary" onClick={filtered ? clearFilters : onCreate}>
+                {filtered ? '清除筛选' : '创建游戏实例'}
+              </button>
+            }
+          />
+        )}
+      </SplitView>
       {editing && (
         <Organize
           key={editing.id}
@@ -334,7 +375,7 @@ export function LibraryPage({
           close={() => setEditing(undefined)}
         />
       )}
-    </div>
+    </>
   );
 }
 function Organize({
@@ -382,20 +423,11 @@ function Organize({
           }, '实例信息已保存').finally(() => setBusy(false));
         }}
       >
-        <Field label="分组">
-          <input
-            aria-label="分组名称"
-            list="library-groups"
-            maxLength={40}
-            value={value.group}
-            onChange={(e) => setValue({ ...value, group: e.target.value })}
-          />
-          <datalist id="library-groups">
-            {groups.map((g) => (
-              <option key={g} value={g} />
-            ))}
-          </datalist>
-        </Field>
+        <GroupField
+          groups={groups}
+          value={value.group}
+          onChange={(group) => setValue({ ...value, group })}
+        />
         <Field label="标签（逗号分隔，最多 12 个）">
           <input aria-label="实例标签" value={tags} onChange={(e) => setTags(e.target.value)} />
         </Field>
@@ -421,5 +453,104 @@ function Organize({
         </button>
       </form>
     </Modal>
+  );
+}
+
+function GroupField({
+  groups,
+  value,
+  onChange,
+}: {
+  groups: string[];
+  value: string;
+  onChange: (group: string) => void;
+}) {
+  const id = useId();
+  const list = useRef<HTMLDivElement>(null);
+  const [open, setOpen] = useState(false);
+  const [active, setActive] = useState(-1);
+  const matches = groups.includes(value)
+    ? groups
+    : groups.filter((group) => matchesSearch(value, group));
+  const expanded = open && matches.length > 0;
+  const close = () => {
+    setOpen(false);
+    setActive(-1);
+  };
+  const choose = (group: string) => {
+    onChange(group);
+    close();
+  };
+  useEffect(() => {
+    list.current?.children[active]?.scrollIntoView({ block: 'nearest' });
+  }, [active]);
+  return (
+    <div className="field">
+      <label htmlFor={id}>分组</label>
+      <div className="group-combobox">
+        <input
+          id={id}
+          role="combobox"
+          aria-label="分组名称"
+          aria-autocomplete="list"
+          aria-expanded={expanded}
+          aria-controls={expanded ? id + '-groups' : undefined}
+          aria-activedescendant={expanded && active >= 0 ? id + '-' + active : undefined}
+          autoComplete="off"
+          maxLength={40}
+          value={value}
+          onClick={() => setOpen(true)}
+          onBlur={close}
+          onChange={(event) => {
+            onChange(event.target.value);
+            setActive(-1);
+            setOpen(true);
+          }}
+          onKeyDown={(event) => {
+            if (event.nativeEvent.isComposing) return;
+            if (matches.length && (event.key === 'ArrowDown' || event.key === 'ArrowUp')) {
+              event.preventDefault();
+              setOpen(true);
+              setActive(
+                event.key === 'ArrowDown'
+                  ? (active + 1) % matches.length
+                  : (active <= 0 ? matches.length : active) - 1,
+              );
+            } else if (expanded && event.key === 'Enter' && active >= 0) {
+              event.preventDefault();
+              choose(matches[active]);
+            } else if (expanded && event.key === 'Escape') {
+              event.stopPropagation();
+              close();
+            }
+          }}
+        />
+        {groups.length > 0 && <ChevronDown size={15} aria-hidden="true" />}
+        {expanded && (
+          <div
+            id={id + '-groups'}
+            ref={list}
+            role="listbox"
+            aria-label="已有分组"
+            className="launcher-select-menu"
+          >
+            {matches.map((group, index) => (
+              <div
+                id={id + '-' + index}
+                key={group}
+                role="option"
+                aria-selected={group === value}
+                className={'launcher-select-option' + (index === active ? ' highlighted' : '')}
+                onPointerMove={() => setActive(index)}
+                onMouseDown={(event) => event.preventDefault()}
+                onClick={() => choose(group)}
+              >
+                <span>{group}</span>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    </div>
   );
 }

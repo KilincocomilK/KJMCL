@@ -34,6 +34,12 @@ pub fn coords(name: &str) -> Option<(i32, i32)> {
     Some((x, z))
 }
 pub fn dimension(root: &Path, dim: &str) -> Result<PathBuf> {
+    if ["overworld", "the_nether", "the_end"].contains(&dim) {
+        let modern = safety::join(root, &format!("dimensions/minecraft/{dim}"))?;
+        if modern.join("region").is_dir() {
+            return Ok(modern);
+        }
+    }
     match dim {
         "overworld" => Ok(root.to_owned()),
         "the_nether" => safety::join(root, "DIM-1"),
@@ -120,6 +126,75 @@ pub fn file_from_request(root: &Path, v: &Value, kind: &str) -> Result<PathBuf> 
         .ok_or("区域坐标越界")?;
     safety::join(&dim, &format!("{kind}/r.{rx}.{rz}.mca"))
 }
+// Sample a real generated chunk per map pixel at distant zooms. Empty cells stay transparent.
+pub fn terrain_tiles(root: &Path, v: &Value) -> Result<Value> {
+    let side = v["side"]
+        .as_u64()
+        .filter(|v| [1, 8, 32].contains(v))
+        .ok_or("地图分辨率无效")? as usize;
+    let regions = v["regions"]
+        .as_array()
+        .filter(|r| !r.is_empty() && r.len() <= 32)
+        .ok_or("地图范围无效")?;
+    let data: Vec<_> = regions
+        .iter()
+        .map(|r| {
+            let query = json!({"dimension":v["dimension"],"rx":r["rx"],"rz":r["rz"]});
+            let result = (|| -> Result<String> {
+                let path = file_from_request(root, &query, "region")?;
+                let chunks = header(
+                    &path,
+                    query["rx"].as_i64().unwrap() as i32,
+                    query["rz"].as_i64().unwrap() as i32,
+                )?;
+                let mut samples = vec![None; side * side];
+                let span = 32 / side;
+                for (i, c) in chunks.iter().enumerate() {
+                    let x = c.index % 32;
+                    let z = c.index / 32;
+                    let index = (z / span) * side + x / span;
+                    let dx = (2 * (x % span) + 1).abs_diff(span);
+                    let dz = (2 * (z % span) + 1).abs_diff(span);
+                    let dist = dx * dx + dz * dz;
+                    if samples[index].is_none_or(|(old, _)| dist < old) {
+                        samples[index] = Some((dist, i));
+                    }
+                }
+                let pixels: Vec<[u8; 4]> = samples
+                    .par_iter()
+                    .map(|slot| {
+                        let (_, i) = (*slot)?;
+                        let doc = decode(&path, &chunks[i]).ok()?;
+                        let surface = nbt::surface(&doc).ok()?;
+                        let mut sum = [0u32; 3];
+                        let mut n = 0;
+                        for pixel in surface.pixels.chunks_exact(4).filter(|p| p[3] != 0) {
+                            for channel in 0..3 {
+                                sum[channel] += pixel[channel] as u32;
+                            }
+                            n += 1;
+                        }
+                        (n > 0).then(|| {
+                            [
+                                (sum[0] / n) as u8,
+                                (sum[1] / n) as u8,
+                                (sum[2] / n) as u8,
+                                255,
+                            ]
+                        })
+                    })
+                    .map(|pixel| pixel.unwrap_or([0; 4]))
+                    .collect();
+                Ok(STANDARD.encode(pixels.as_flattened()))
+            })();
+            match result {
+                Ok(pixels) => json!({"rx":r["rx"],"rz":r["rz"],"pixels":pixels}),
+                Err(error) => json!({"rx":r["rx"],"rz":r["rz"],"error":error}),
+            }
+        })
+        .collect();
+    Ok(json!(data))
+}
 pub fn inspect(root: &Path, v: &Value) -> Result<Value> {
     let file = file_from_request(root, v, "region")?;
     let rx = v["rx"].as_i64().unwrap() as i32;
@@ -128,7 +203,7 @@ pub fn inspect(root: &Path, v: &Value) -> Result<Value> {
     // Cache content is advisory only and never used to decide destructive operations.
     let stamp = fs::metadata(&file).map_err(|e| e.to_string())?;
     let fingerprint = format!(
-        "v1:{}:{}:{}",
+        "v2:{}:{}:{}",
         file.display(),
         stamp.len(),
         stamp
@@ -183,9 +258,9 @@ pub fn inspect(root: &Path, v: &Value) -> Result<Value> {
                         .take(128)
                         .collect::<Vec<_>>()
                 );
-                let (pixels, palette) = nbt::surface(&root)?;
-                detail["palette"] = json!(palette);
-                Ok(pixels)
+                let tile = nbt::surface(&root)?;
+                detail["palette"] = json!(tile.palette);
+                Ok(tile)
             }) {
                 Ok(pixels) => (detail, Some(pixels)),
                 Err(e) => {
@@ -195,7 +270,8 @@ pub fn inspect(root: &Path, v: &Value) -> Result<Value> {
             }
         })
         .collect();
-    let mut pixels = vec![0; 512 * 512 * 4];
+    let mut pixels = vec![0u8; 512 * 512 * 4];
+    let mut heights = vec![i16::MIN; 512 * 512];
     let mut details = Vec::with_capacity(chunks.len());
     for (i, (detail, tile)) in results.into_iter().enumerate() {
         if let Some(tile) = tile {
@@ -204,10 +280,33 @@ pub fn inspect(root: &Path, v: &Value) -> Result<Value> {
             let z = (c.index / 32) * 16;
             for row in 0..16 {
                 let at = ((z + row) * 512 + x) * 4;
-                pixels[at..at + 64].copy_from_slice(&tile[row * 64..row * 64 + 64]);
+                pixels[at..at + 64].copy_from_slice(&tile.pixels[row * 64..row * 64 + 64]);
+                heights[at / 4..at / 4 + 16]
+                    .copy_from_slice(&tile.heights[row * 16..row * 16 + 16]);
             }
         }
         details.push(detail);
+    }
+    // Northwest light makes slopes legible without altering the map's block coordinates.
+    for (i, &height) in heights.iter().enumerate() {
+        if height == i16::MIN {
+            continue;
+        }
+        let slope = |other: Option<&i16>| {
+            other
+                .filter(|v| **v != i16::MIN)
+                .map_or(0, |v| (height - *v).clamp(-6, 6))
+        };
+        let west = if i % 512 > 0 {
+            Some(&heights[i - 1])
+        } else {
+            None
+        };
+        let north = i.checked_sub(512).and_then(|p| heights.get(p));
+        let light = 100 + slope(north) * 3 + slope(west) * 2;
+        for c in &mut pixels[i * 4..i * 4 + 3] {
+            *c = ((*c as i32 * light as i32) / 100).min(255) as u8;
+        }
     }
     let mut image = Vec::new();
     {

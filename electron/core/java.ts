@@ -144,6 +144,7 @@ export class Java {
       hash: pkg.checksum,
       algorithm: 'sha256',
       size: pkg.size,
+      onProgress: (fraction) => ctx.progress(2 + 78 * fraction, '下载 Java 运行时'),
     });
     ctx.progress(80, '解压 Java');
     ctx.signal.throwIfAborted();

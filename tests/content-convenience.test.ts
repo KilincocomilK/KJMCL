@@ -44,15 +44,49 @@ async function fixture() {
   const resources = new Resources(store),
     mods = new Mods(store, net as any),
     audit = new ModAudit(store, resources);
-  const catalog = new Catalog(store, net as any, mods, {} as any, resources, {} as any);
+  const cf = { api: vi.fn() };
+  const catalog = new Catalog(store, net as any, mods, cf as any, resources, {} as any);
   const jar = async (name: string, version: string) => {
     await mkdir(path.join(gameDir, 'mods'), { recursive: true });
     const zip = new AdmZip();
     zip.addFile('fabric.mod.json', Buffer.from(JSON.stringify({ id: 'example', version })));
     await writeFile(path.join(gameDir, 'mods', name), zip.toBuffer());
   };
-  return { root, store, gameDir, net, catalog, audit, jar };
+  return { root, store, gameDir, net, cf, catalog, audit, jar };
 }
+it('translates both provider searches, retains instance filters, sorting and literal Chinese fallback', async () => {
+  const { catalog, cf, net } = await fixture();
+  const request = {
+    id: 'test',
+    kind: 'mod',
+    query: '钠Sodium Fabric',
+    offset: 20,
+    sort: 'downloads',
+  } as const;
+  cf.api.mockResolvedValue({
+    data: [{ id: 394468, slug: 'sodium', name: 'Sodium' }],
+    pagination: { totalCount: 23 },
+  });
+  const page = await catalog.search({ ...request, source: 'curseforge' });
+  const params = new URL(cf.api.mock.calls[0][0], 'https://api.curseforge.com/').searchParams;
+  expect(Object.fromEntries(params)).toMatchObject({
+    searchFilter: 'sodium',
+    sortField: '6',
+    modLoaderType: '4',
+    gameVersion: '1.21.1',
+    index: '20',
+  });
+  expect(page.items[0].url).toBe('https://www.curseforge.com/minecraft/mc-mods/sodium');
+  net.json
+    .mockResolvedValueOnce({ hits: [], total_hits: 0 })
+    .mockResolvedValueOnce({ hits: [{ project_id: 'literal', title: '钠汉化' }], total_hits: 1 });
+  const raw = await catalog.search({ ...request, offset: 0, source: 'modrinth', query: '钠汉化' });
+  expect(net.json.mock.calls.map(([url]) => new URL(url).searchParams.get('query'))).toEqual([
+    'sodium 汉化',
+    '钠汉化',
+  ]);
+  expect(raw.items[0].url).toBe('https://modrinth.com/mod/literal');
+});
 it('exports enabled and disabled local/provider mods with exact versions but no account, path or JVM settings', async () => {
   const { root, store, gameDir, catalog, audit, jar } = await fixture();
   await jar('z-local.jar', '2.0');

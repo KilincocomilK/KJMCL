@@ -65,11 +65,26 @@ it('migrates managed backgrounds and schema backups with the data directory', as
   await mkdir(path.join(store.root, 'appearance'));
   await writeFile(path.join(store.root, 'appearance', 'background.png'), 'managed-image');
   await writeFile(path.join(store.root, 'state.json.v6.bak'), 'state-backup');
+  await writeFile(path.join(store.root, 'state.json.v7.bak'), 'before-sidebar');
+  const sidebarOrder = [...store.data.sidebarOrder].reverse();
+  store.setSidebarOrder(sidebarOrder);
   await storage.migrate(store, target, ctx());
   expect(await readFile(path.join(target, 'appearance', 'background.png'), 'utf8')).toBe(
     'managed-image',
   );
   expect(await readFile(path.join(target, 'state.json.v6.bak'), 'utf8')).toBe('state-backup');
+  expect(await readFile(path.join(target, 'state.json.v7.bak'), 'utf8')).toBe('before-sidebar');
+  expect(new Store(target).data.sidebarOrder).toEqual(sidebarOrder);
+});
+it('moves assistant conversations, settings and encrypted credential files together', async () => {
+  const { store, storage, target } = await fixture();
+  const files = ['assistant/config.json', 'assistant/chats/example.json', 'credentials/ai-mcp-token.vault'];
+  for (const file of files) {
+    await mkdir(path.dirname(path.join(store.root, file)), { recursive: true });
+    await writeFile(path.join(store.root, file), 'migration fixture');
+  }
+  await storage.migrate(store, target, ctx());
+  for (const file of files) expect(await readFile(path.join(target, file), 'utf8')).toBe('migration fixture');
 });
 it('rejects migrating launcher data anywhere inside an indexed game folder with isolated versions', async () => {
   const { base, store, storage } = await fixture();

@@ -1,3 +1,4 @@
+import { matchesSearch } from '../../shared/search';
 import { useState } from 'react';
 import type { ContentFavorite, ContentKind, ContentSource, Snapshot } from '../../shared/types';
 import { Modal, Empty } from '../components';
@@ -32,7 +33,7 @@ export function Favorites({
         (!source || f.source === source) &&
         (!kind || f.kind === kind) &&
         (!group || (group === 'ungrouped' ? !f.group : 'group:' + f.group === group)) &&
-        `${f.title} ${f.description} ${f.author}`.toLowerCase().includes(query.toLowerCase()),
+        matchesSearch(query, f.title, f.description, f.author, f.group, f.projectId),
     )
     .sort((a, b) => b.savedAt - a.savedAt);
   const currentOffset = Math.min(offset, Math.max(0, Math.ceil(items.length / 20) - 1) * 20);

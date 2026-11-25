@@ -1,7 +1,7 @@
 {
   "name": "kjmcl",
   "productName": "KJMCL",
-  "version": "0.7.3",
+  "version": "0.7.5",
   "private": true,
   "packageManager": "npm@11.19.1",
   "description": "KJMC Launcher",
@@ -24,7 +24,7 @@
     "dist": "npm run build && electron-builder",
     "preview": "vite --host 127.0.0.1",
     "format": "prettier --write src electron shared tests scripts *.json *.ts",
-    "test:desktop": "npm run build && node scripts/desktop-smoke.mjs && node scripts/resource-desktop-smoke.mjs && node scripts/save-desktop-smoke.mjs && node scripts/library-desktop-smoke.mjs && node scripts/lightweight-desktop-smoke.mjs && node scripts/folders-desktop-smoke.mjs && node scripts/mod-resources-desktop-smoke.mjs && node scripts/appearance-desktop-smoke.mjs && node scripts/content-desktop-smoke.mjs && node scripts/convenience-desktop-smoke.mjs && node scripts/skin-editor-desktop-smoke.mjs && node scripts/seed-map-desktop-smoke.mjs && node scripts/projection-desktop-smoke.mjs",
+    "test:desktop": "npm run build && node scripts/desktop-smoke.mjs && node scripts/resource-desktop-smoke.mjs && node scripts/reden-desktop-smoke.mjs && node scripts/save-desktop-smoke.mjs && node scripts/library-desktop-smoke.mjs && node scripts/lightweight-desktop-smoke.mjs && node scripts/folders-desktop-smoke.mjs && node scripts/mod-resources-desktop-smoke.mjs && node scripts/appearance-desktop-smoke.mjs && node scripts/content-desktop-smoke.mjs && node scripts/convenience-desktop-smoke.mjs && node scripts/skin-editor-desktop-smoke.mjs && node scripts/seed-map-desktop-smoke.mjs && node scripts/projection-desktop-smoke.mjs && node scripts/assistant-desktop-smoke.mjs",
     "test:storage": "npm run build && node scripts/storage-smoke.mjs",
     "test:uninstall": "npm run build && node scripts/uninstall-smoke.mjs",
     "notices": "node scripts/notices.mjs",
@@ -36,6 +36,8 @@
     "test:projection-render": "npm run build && node scripts/projection-render-desktop-smoke.mjs"
   },
   "dependencies": {
+    "@modelcontextprotocol/node": "2.1.2",
+    "@modelcontextprotocol/server": "2.4.0",
     "adm-zip": "0.6.1",
     "deepslate": "0.27.3",
     "gifenc": "1.0.3",
@@ -43,6 +45,7 @@
     "pngjs": "7.0.0",
     "react": "19.3.1",
     "react-dom": "19.3.1",
+    "semver": "7.8.6",
     "three": "0.187.0",
     "undici": "8.12.4",
     "yauzl": "3.4.0",
@@ -56,6 +59,7 @@
     "@types/pngjs": "6.0.5",
     "@types/react": "19.3.0",
     "@types/react-dom": "19.3.0",
+    "@types/semver": "7.7.1",
     "@types/three": "0.187.0",
     "@types/yauzl": "3.4.0",
     "@types/yazl": "3.3.1",
@@ -91,6 +95,7 @@
       "icon": "build/icon.ico"
     },
     "nsis": {
+      "artifactName": "KJMCL-Setup-${version}.${ext}",
       "oneClick": false,
       "allowToChangeInstallationDirectory": true,
       "createDesktopShortcut": true,
@@ -98,6 +103,7 @@
       "include": "build/installer.nsh"
     },
     "portable": {
+      "artifactName": "KJMCL-${version}.${ext}",
       "unpackDirName": true
     },
     "mac": {

@@ -1,6 +1,6 @@
 import { Select } from '../Select';
 import { useState } from 'react';
-import { Globe } from 'lucide-react';
+import { SettingGroup } from '../components/SettingGroup';
 import type { Account } from '../../shared/types';
 import { api } from '../api';
 import { Field } from '../components';
@@ -12,11 +12,7 @@ export function ThirdPartyLogin({ run }: { run: Run }) {
     [profiles, setProfiles] = useState<Account[]>([]),
     [busy, setBusy] = useState(false);
   return (
-    <section className="panel setting-section third-login">
-      <div className="section-title">
-        <Globe size={19} />
-        <h2>第三方账户</h2>
-      </div>
+    <SettingGroup title="第三方账户" art="gear" className="third-login">
       <form
         onSubmit={async (e) => {
           e.preventDefault();
@@ -74,6 +70,6 @@ export function ThirdPartyLogin({ run }: { run: Run }) {
           </Select>
         </Field>
       )}
-    </section>
+    </SettingGroup>
   );
 }

@@ -65,3 +65,32 @@ it('uses official HTTP routes, encodes names and room codes, handles errors and 
 it('rejects corrupt compressed component archives', () => {
   expect(() => unpackTerracotta(Buffer.from('not gzip'))).toThrow();
 });
+
+it.skipIf(
+  !['win32', 'linux'].includes(process.platform) || !['x64', 'arm64'].includes(process.arch),
+)('tries Gitee first, keeps the pinned digest on fallback and respects cancellation', async () => {
+  const root = await mkdtemp(path.join(os.tmpdir(), 'kjmcl-terra-source-'));
+  roots.push(root);
+  const store = new Store(root),
+    net = new Network(() => store.data.settings);
+  const download = vi.spyOn(net, 'download').mockRejectedValue(new Error('offline'));
+  const terracotta = new Terracotta(root, net);
+  const abort = new AbortController(),
+    ctx = { signal: abort.signal, progress: vi.fn(), setTitle: vi.fn() };
+  await expect(terracotta.install(ctx)).rejects.toThrow('offline');
+  const [primary, fallback] = download.mock.calls;
+  expect(new URL(primary[0]).hostname).toBe('gitee.com');
+  expect(fallback[0]).toBe(primary[0].replace('gitee.com', 'github.com'));
+  expect(primary[2]).toMatchObject({
+    algorithm: 'sha256',
+    hash: expect.stringMatching(/^[a-f0-9]{64}$/),
+  });
+  expect(fallback[2].hash).toBe(primary[2].hash);
+  download.mockClear().mockImplementationOnce(async () => {
+    abort.abort();
+    throw new Error('cancelled');
+  });
+  await expect(terracotta.install(ctx)).rejects.toThrow();
+  expect(download).toHaveBeenCalledTimes(1);
+  expect(await terracotta.installed()).toBe(false);
+});

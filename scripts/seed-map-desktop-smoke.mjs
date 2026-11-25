@@ -30,8 +30,9 @@ const checks = [],
   };
 const workspace = path.join(data, 'seed-map', 'workspace.json');
 const json = async (file) => JSON.parse(await readFile(file, 'utf8'));
-const disk = () => json(workspace).catch(() => null);
 let app, page;
+// The storage reader waits for queued writes before opening the workspace on Windows.
+const disk = () => page.evaluate(() => window.kjmcl.seedMapState());
 const map = () => page.getByLabel('种子地图查看器', { exact: true });
 const canvas = () => page.getByLabel('种子地图画布', { exact: true });
 async function launch() {
@@ -305,14 +306,20 @@ try {
     await expect.poll(async () => (await disk())?.current?.dimension).toBe(dimension);
     await rendered();
   }
-  await page.getByRole('button', { name: '皮肤编辑器', exact: true }).click();
+  const switchTool = async (name) => {
+    const navigation = page.locator('.toolbox-navigation');
+    await expect(navigation.getByRole('button')).toHaveCount(1);
+    await navigation.getByRole('button', { name: '返回工具箱', exact: true }).click();
+    await page.locator('.toolbox-card').filter({ hasText: name }).click();
+  };
+  await switchTool('皮肤编辑器');
   await expect(page.getByLabel('作品名称', { exact: true })).toBeVisible();
   await page.getByLabel('作品名称', { exact: true }).fill('工具箱切换皮肤');
-  await page.getByRole('button', { name: '种子地图', exact: true }).click();
+  await switchTool('种子地图');
   await expect(map().getByLabel('地图名称', { exact: true })).toHaveValue('桌面种子地图');
-  await page.getByRole('button', { name: '皮肤编辑器', exact: true }).click();
+  await switchTool('皮肤编辑器');
   await expect(page.getByLabel('作品名称', { exact: true })).toHaveValue('工具箱切换皮肤');
-  await page.getByRole('button', { name: '种子地图', exact: true }).click();
+  await switchTool('种子地图');
   checks.push('native fullscreen/Esc, all dimensions and toolbox round-trip preserves both tools');
 
   await picker('open', path.join(world, 'level.dat'));
@@ -362,6 +369,7 @@ try {
   await page.screenshot({ path: path.join(shots, 'seed-map-960.png'), fullPage: true });
   const expected = structuredClone((await disk()).current);
   await close();
+  expect((await json(workspace)).current).toEqual(expected);
   await launch();
   await expect(map().getByLabel('地图名称', { exact: true })).toHaveValue(expected.name);
   expect((await page.evaluate(() => window.kjmcl.seedMapState())).current).toEqual(expected);

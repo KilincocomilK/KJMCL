@@ -1,86 +1,113 @@
-/* Consolidated workspaces: rectangular black/orange tabs, one instance selector per domain. */
+main[data-page='saves'],
+main[data-page='diagnostics'] {
+  display: flex;
+  min-height: 0;
+  padding: 0;
+}
 .workspace {
   display: flex;
   flex-direction: column;
-  gap: 18px;
+  width: 100%;
   min-width: 0;
+  min-height: 0;
 }
 .workspace-bar {
+  flex: none;
   display: flex;
-  align-items: flex-end;
+  align-items: center;
+  gap: 12px;
   justify-content: space-between;
-  gap: 22px;
-  border-bottom: 1px solid var(--line);
+  padding: 8px 18px 0;
+  background: var(--rail);
+  border-bottom: 2px solid var(--ink);
 }
 .workspace-tabs {
   display: flex;
-  align-items: stretch;
-  gap: 26px;
+  gap: 4px;
   min-width: 0;
-  overflow-x: auto;
-  scrollbar-width: thin;
 }
 .workspace-tabs button {
-  position: relative;
+  font: 16px var(--pixel);
+  color: var(--muted);
+  padding: 8px 12px 10px;
+  background: none;
   border: 0;
-  border-bottom: 2px solid transparent;
-  background: transparent;
-  color: #8d9587;
-  padding: 0 0 13px;
-  font-size: 13px;
-  white-space: nowrap;
-}
-.workspace-tabs button:hover {
-  border-color: transparent;
-  border-bottom-color: #ffffff2b;
-  background: transparent;
-  color: #e9ecdf;
+  border-bottom: 3px solid transparent;
 }
 .workspace-tabs button[aria-selected='true'] {
-  color: #e9ecdf;
+  color: #ffb877;
   border-bottom-color: var(--orange);
 }
-.workspace-tabs button:focus-visible {
-  outline: 1px solid var(--orange);
-  outline-offset: 2px;
-}
 .workspace-instance {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  flex: 0 1 340px;
-  min-width: 0;
-  max-width: 100%;
-  padding-bottom: 8px;
-  color: #74736f;
-  font-size: 11px;
-  letter-spacing: 0.5px;
-  white-space: nowrap;
-}
-.workspace-instance > span:not(.launcher-select) {
-  flex-shrink: 0;
+  width: min(25%, 260px);
+  min-width: 140px;
+  padding-bottom: 6px;
 }
 .workspace-instance .instance-select {
-  flex: 1 1 190px;
-  min-width: 0;
-  width: 280px;
-  max-width: 280px;
+  width: 100%;
+}
+.workspace-instance .launcher-select-trigger {
+  min-height: 32px;
+  padding: 6px 10px;
 }
 .workspace-panel {
-  min-width: 0;
+  flex: 1;
+  min-height: 0;
+  padding: var(--page-pad);
+  overflow: auto;
 }
-@media (max-width: 860px) {
+.workspace-panel:has(.pane-layout) {
+  padding: 0;
+  overflow: hidden;
+}
+.workspace-panel > .empty,
+.save-manager {
+  height: 100%;
+}
+.save-manager .pane-content:has(.save-detail > .empty) {
+  display: grid;
+}
+.save-detail:has(> .empty) {
+  align-content: center;
+}
+.save-summary .minor-details {
+  margin-bottom: 8px;
+}
+.crash-reports .toolbar {
+  flex-wrap: wrap;
+  gap: 10px;
+}
+.crash-reports .toolbar > input {
+  flex: 1 1 160px;
+}
+.crash-reports .toolbar label {
+  white-space: nowrap;
+}
+.workspace-panel .performance-page {
+  width: min(100%, 846px);
+  margin-inline: auto;
+  gap: 12px;
+}
+.performance-page .video-presets {
+  grid-template-columns: 1fr;
+}
+.workspace-panel[data-view='logs'] {
+  display: flex;
+  flex-direction: column;
+}
+.workspace-panel .log-console {
+  flex: 1;
+  height: auto;
+  min-height: 200px;
+}
+@media (max-width: 1050px) {
   .workspace-bar {
-    align-items: stretch;
-    flex-direction: column;
-    gap: 10px;
-    padding-bottom: 10px;
+    padding-inline: 12px;
   }
   .workspace-tabs {
-    border-bottom: 1px solid var(--line);
+    gap: 1px;
   }
-  .workspace-instance {
-    justify-content: flex-end;
-    padding-bottom: 0;
+  .workspace-tabs button {
+    padding-inline: 8px;
   }
 }

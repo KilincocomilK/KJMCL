@@ -1,3 +1,4 @@
+import { catalogQuery } from '../../shared/search';
 import path from 'node:path';
 import { mkdir, rename, rm } from 'node:fs/promises';
 import { randomUUID } from 'node:crypto';
@@ -5,7 +6,7 @@ import { Store } from './store';
 import { Network } from './network';
 import type { Secrets } from './vault';
 import { atomicJson, exists, hashFile, inside, json } from './files';
-import type { Work } from './tasks';
+import { progressRange, type Work } from './tasks';
 import type { Loader, ModProject } from '../../shared/types';
 export interface CFFile {
   id: number;
@@ -45,7 +46,7 @@ export class CurseForge {
       gameId: '432',
       classId: '6',
       gameVersion: i.version,
-      searchFilter: query,
+      searchFilter: catalogQuery(query, [i.loader, i.version, 'mod']),
       index: String(offset),
       pageSize: '20',
       sortField: '2',
@@ -144,6 +145,7 @@ export class CurseForge {
           signal: ctx.signal,
           hash: sha1,
           size: f.fileLength,
+          onProgress: (fraction) => ctx.progress((80 * (n + fraction)) / resolved.size, f.fileName),
         });
         additions.push({ projectId: f.modId, fileId: f.id, file: f.fileName, sha1 });
         ctx.progress((80 * ++n) / resolved.size, f.fileName);
@@ -200,9 +202,15 @@ export class CurseForge {
   async update(id: string, ctx: Work) {
     const lock = await this.lock(id);
     if (!lock.length) throw new Error('没有托管的 CurseForge 模组');
-    for (const l of lock) {
+    for (const [index, l] of lock.entries()) {
       const latest = await this.latest(id, l.projectId);
-      if (latest.id !== l.fileId) await this.install(id, l.projectId, ctx);
+      const item = progressRange(
+        ctx,
+        (100 * index) / lock.length,
+        (100 * (index + 1)) / lock.length,
+      );
+      if (latest.id !== l.fileId) await this.install(id, l.projectId, item);
+      item.progress(100, '检查模组更新');
     }
   }
 }

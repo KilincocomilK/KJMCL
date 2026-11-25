@@ -193,7 +193,7 @@ describe('persistence, IPC and task cancellation', () => {
   });
   it('mirrors only Minecraft content endpoints', async () => {
     const s = new Store(await temp());
-    s.data.settings.source = 'bmclapi';
+    expect(s.data.settings.source).toBe('bmclapi');
     const net = new Network(() => s.data.settings);
     expect(net.url('https://resources.download.minecraft.net/ab/abcdef')).toBe(
       'https://bmclapi2.bangbang93.com/assets/ab/abcdef',
@@ -202,6 +202,12 @@ describe('persistence, IPC and task cancellation', () => {
       'https://login.microsoftonline.com/consumers',
     );
     expect(() => net.url('http://unsafe.test')).toThrow();
+    s.data.settings.source = 'official';
+    s.save();
+    expect(new Store(s.root).data.settings.source).toBe('official');
+    expect(net.url('https://piston-meta.mojang.com/mc/game/version_manifest_v2.json')).toBe(
+      'https://piston-meta.mojang.com/mc/game/version_manifest_v2.json',
+    );
   });
 });
 

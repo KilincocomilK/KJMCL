@@ -10,7 +10,8 @@ import {
 import { mkdir, readdir, lstat, copyFile, stat, realpath, rm } from 'node:fs/promises';
 import { randomUUID } from 'node:crypto';
 import { archiveWorld, restoreWorld } from './archives';
-import { GameFolders, assertExternal } from './game-folders';
+import { safeExport } from './safe-export';
+import { GameFolders, assertExternal, checkGamePath } from './game-folders';
 import { Store } from './store';
 import { atomicJson, exists, inside, json, hashFile } from './files';
 import type { Work } from './tasks';
@@ -170,8 +171,17 @@ export class Backups {
       if (file.endsWith('.json')) out.push(await json<Backup>(inside(root, file)));
     return out.sort((a, b) => b.createdAt - a.createdAt);
   }
-  async create(id: string, world: string, ctx: Work) {
+  async checkExport(id: string, world: string, destination: string) {
     const source = inside(path.join(this.store.dir(id), 'saves'), world);
+    await checkGamePath(source);
+    await checkGamePath(path.dirname(destination));
+    if (contains(source, destination)) throw new Error('请选择世界目录以外的位置');
+    if (await exists(destination)) throw new Error('文件已存在，请选择新的文件名');
+  }
+  async create(id: string, world: string, ctx: Work, exportPath?: string) {
+    const source = inside(path.join(this.store.dir(id), 'saves'), world);
+    await checkGamePath(source);
+    if (exportPath) await this.checkExport(id, world, exportPath);
     if (!(await exists(path.join(source, 'level.dat')))) throw new Error('存档不存在');
     const backupId = randomUUID(),
       root = this.root(id);
@@ -189,6 +199,16 @@ export class Backups {
         size: (await stat(path.join(root, backupId + '.zip'))).size,
         sha256: await hashFile(path.join(root, backupId + '.zip'), 'sha256'),
       });
+      if (exportPath) {
+        try {
+          await this.checkExport(id, world, exportPath);
+          await safeExport(exportPath, (tmp) => copyFile(path.join(root, backupId + '.zip'), tmp));
+        } catch (e) {
+          throw new Error(
+            '已存入备份库，导出失败：' + (e instanceof Error ? e.message : String(e)),
+          );
+        }
+      }
       ctx.progress(100, '存档已备份');
     } finally {
       await rm(tmp, { force: true });

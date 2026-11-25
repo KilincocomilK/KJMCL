@@ -1,9 +1,12 @@
-import { useEffect, useState } from 'react';
-import { Archive, RefreshCw, Trash2 } from 'lucide-react';
+import { useEffect, useMemo, useState } from 'react';
+import { LocalResourceArt, useLocalCards } from '../components/LocalResourceArt';
+import { RefreshCw, Trash2 } from 'lucide-react';
 import type { Snapshot, World, Backup } from '../../shared/types';
+import { ItemArt } from '../components/ItemArt';
 import { api } from '../api';
 import { Empty, InstanceSelect } from '../components';
 import { type Run, size } from '../ui';
+import { WorldBackup } from '../dialogs/WorldBackup';
 export function BackupsPage({
   state,
   run,
@@ -15,7 +18,11 @@ export function BackupsPage({
 }) {
   const [worlds, setWorlds] = useState<World[]>([]),
     [backups, setBackups] = useState<Backup[]>([]);
+  const [backup, setBackup] = useState<string>();
   const id = state.selectedInstanceId;
+  useEffect(() => setBackup(undefined), [id]);
+  const names = useMemo(() => worlds.map((w) => w.name), [worlds]);
+  const cards = useLocalCards(id, 'worlds', names);
   const refresh = async () => {
     if (id)
       await run(async () => {
@@ -29,7 +36,10 @@ export function BackupsPage({
   if (!id) return <Empty title="先选择一个游戏实例" />;
   const running = state.running.includes(id);
   return (
-    <>
+    <div className="single-page backups-page">
+      {backup && (
+        <WorldBackup id={id} world={backup} run={run} onClose={() => setBackup(undefined)} />
+      )}
       <div className="toolbar">
         {showInstanceSelect && <InstanceSelect state={state} run={run} />}
         <button onClick={() => void refresh()}>
@@ -44,22 +54,19 @@ export function BackupsPage({
         <div className="panel">
           {worlds.map((w) => (
             <div className="mod-row" key={w.name}>
-              <Archive size={24} />
+              <LocalResourceArt kind="worlds" icon={cards?.get(w.name)?.icon} />
               <div className="grow">
                 <strong>{w.name}</strong>
                 <small>{new Date(w.modifiedAt).toLocaleString('zh-CN')}</small>
               </div>
-              <button
-                disabled={running}
-                onClick={() => void run(() => api.backupWorld({ id, world: w.name }), '已开始备份')}
-              >
+              <button disabled={running} onClick={() => setBackup(w.name)}>
                 备份
               </button>
             </div>
           ))}
         </div>
       ) : (
-        <Empty title="没有找到存档" />
+        <p className="muted backup-empty">暂无存档</p>
       )}
       <div className="section-head">
         <h2>备份记录</h2>
@@ -68,7 +75,7 @@ export function BackupsPage({
       <div className="panel">
         {backups.map((b) => (
           <div className="mod-row" key={b.id}>
-            <Archive size={21} />
+            <ItemArt name="book" size={28} />
             <div className="grow">
               <strong>{b.world}</strong>
               <small>
@@ -77,9 +84,7 @@ export function BackupsPage({
             </div>
             <button
               disabled={running}
-              onClick={() =>
-                void run(() => api.restoreBackup({ id, backupId: b.id }), '已开始恢复')
-              }
+              onClick={() => void run(() => api.restoreBackup({ id, backupId: b.id }))}
             >
               恢复
             </button>
@@ -97,6 +102,6 @@ export function BackupsPage({
         ))}
         {!backups.length && <p className="muted backup-empty">暂无备份</p>}
       </div>
-    </>
+    </div>
   );
 }

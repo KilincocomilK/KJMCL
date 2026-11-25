@@ -1,5 +1,7 @@
+import { showSystemDialog } from './system-dialog';
 import { dialog, type BrowserWindow } from 'electron';
 import path from 'node:path';
+import { randomUUID } from 'node:crypto';
 import type { Api } from '../shared/types';
 import type { Store } from './core/store';
 import type { Tasks } from './core/tasks';
@@ -21,6 +23,7 @@ type Extra = Pick<
   | 'setGameLayout'
   | 'worlds'
   | 'backups'
+  | 'chooseBackupExport'
   | 'backupWorld'
   | 'restoreBackup'
   | 'deleteBackup'
@@ -51,6 +54,7 @@ export function featureHandlers(c: {
   writable: (id: string) => Promise<void>;
   assertIdle: (id: string) => void;
   changed: () => void;
+  folderScan: (active: boolean) => void;
   gameRunning: () => boolean;
 }): Extra {
   const {
@@ -67,7 +71,9 @@ export function featureHandlers(c: {
     writable,
     changed,
   } = c;
+  let exportChoice: { id: string; world: string; token: string; path: string } | undefined;
   let authenticating = false;
+  let scanningFolders = 0;
   const accountWritable = () => {
     if (tasks.busy('auth') || authenticating) throw new Error('请先完成当前登录');
     if (c.gameRunning()) throw new Error('请先停止游戏再更换第三方角色');
@@ -109,15 +115,17 @@ export function featureHandlers(c: {
         title: '添加游戏文件夹（包含 versions）',
         properties: ['openDirectory'],
       });
-      return r.canceled ? null : instances.folders.scan(r.filePaths[0]);
+      if (r.canceled || !r.filePaths.length) return null;
+      if (++scanningFolders === 1) c.folderScan(true);
+      try {
+        return await instances.folders.scan(r.filePaths[0]);
+      } finally {
+        if (--scanningFolders === 0) c.folderScan(false);
+      }
     },
     importMinecraft: async (v) => {
       for (const i of store.data.instances) c.assertIdle(i.id);
-      return tasks.exclusive('game-folders', async () => {
-        const id = await instances.folders.add(v);
-        changed();
-        return id;
-      });
+      return tasks.run('导入 ' + v.name, 'game-folders', (ctx) => instances.folders.add(v, ctx));
     },
     refreshGameFolder: async (id) => {
       for (const i of store.data.instances.filter((v) => v.external?.folderId === id))
@@ -129,7 +137,7 @@ export function featureHandlers(c: {
       const folder = store.folder(id);
       for (const i of store.data.instances.filter((v) => v.external?.folderId === id))
         c.assertIdle(i.id);
-      const response = await dialog.showMessageBox(c.window(), {
+      const response = await showSystemDialog(c.window(), {
         message: `移除“${folder.name}”的索引？`,
         detail: '游戏文件与存档会留在原位置。',
         buttons: ['取消', '移除索引'],
@@ -149,10 +157,33 @@ export function featureHandlers(c: {
     },
     worlds: (id) => backups.worlds(id),
     backups: (id) => backups.list(id),
+    chooseBackupExport: async (v) => {
+      await writable(v.id);
+      const result = await dialog.showSaveDialog(c.window(), {
+        title: '选择备份导出路径',
+        defaultPath: v.world + '-' + new Date().toISOString().replace(/[:.]/g, '-') + '.zip',
+        filters: [{ name: 'ZIP 备份', extensions: ['zip'] }],
+      });
+      if (result.canceled || !result.filePath) return null;
+      await backups.checkExport(v.id, v.world, result.filePath);
+      const token = randomUUID();
+      exportChoice = { ...v, token, path: result.filePath };
+      return { path: result.filePath, token };
+    },
     backupWorld: async (v) => {
       await writable(v.id);
+      const choice = exportChoice;
+      if (
+        v.exportToken &&
+        (!choice ||
+          choice.token !== v.exportToken ||
+          choice.id !== v.id ||
+          choice.world !== v.world)
+      )
+        throw new Error('请重新选择导出路径');
+      if (v.exportToken) exportChoice = undefined;
       return tasks.start('备份 ' + v.world, v.id, async (ctx) => {
-        await backups.create(v.id, v.world, ctx);
+        await backups.create(v.id, v.world, ctx, v.exportToken ? choice?.path : undefined);
       });
     },
     restoreBackup: async (v) => {
@@ -161,7 +192,7 @@ export function featureHandlers(c: {
     },
     deleteBackup: async (v) => {
       await writable(v.id);
-      const r = await dialog.showMessageBox(c.window(), {
+      const r = await showSystemDialog(c.window(), {
         message: '删除此备份？',
         buttons: ['取消', '删除'],
         cancelId: 0,
@@ -214,11 +245,16 @@ export function featureHandlers(c: {
     searchCurseForge: (v) => cf.search(v.id, v.query, v.offset),
     installCurseForge: async (v) => {
       await writable(v.id);
-      return tasks.start('安装 CurseForge 模组', v.id, (ctx) => cf.install(v.id, v.projectId, ctx));
+      return tasks.start(
+        '安装 CurseForge 模组',
+        v.id,
+        (ctx) => cf.install(v.id, v.projectId, ctx),
+        'download',
+      );
     },
     updateCurseForge: async (id) => {
       await writable(id);
-      return tasks.start('更新 CurseForge 模组', id, (ctx) => cf.update(id, ctx));
+      return tasks.start('更新 CurseForge 模组', id, (ctx) => cf.update(id, ctx), 'download');
     },
     preparePack: async (v) => {
       await writable(v.id);
@@ -235,10 +271,8 @@ export function featureHandlers(c: {
       return r.filePath ? publishing.prepare(v, r.filePath) : null;
     },
     publishPack: async (v) => {
-      const r = await dialog.showMessageBox(c.window(), {
-        type: 'question',
+      const r = await showSystemDialog(c.window(), {
         message: `向 Modrinth 项目 ${v.projectId} 发布已预览的整合包？`,
-        detail: '这会创建远程版本。请确保你已检查发布包及配置文件清单。',
         buttons: ['取消', '发布'],
         cancelId: 0,
         defaultId: 0,

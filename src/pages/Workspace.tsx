@@ -1,6 +1,7 @@
 import type { KeyboardEvent } from 'react';
 import type { Snapshot, WorldRef } from '../../shared/types';
-import { InstanceSelect } from '../components';
+import { ItemArt, type ItemName } from '../components/ItemArt';
+import { Empty, InstanceSelect } from '../components';
 import type { Run } from '../ui';
 import { SavesPage } from './Saves';
 import { BackupsPage } from './Backups';
@@ -31,6 +32,15 @@ const WORKSPACE_TABS: Record<WorkspaceId, readonly { key: WorkspaceTab; label: s
   ],
 };
 
+const tabArt: Record<WorkspaceTab, ItemName> = {
+  worlds: 'block',
+  backups: 'book',
+  performance: 'dust',
+  logs: 'reel',
+  crashes: 'plan',
+  storage: 'chest',
+};
+
 export function isWorkspace(page: string): page is WorkspaceId {
   return page === 'saves' || page === 'diagnostics';
 }
@@ -49,16 +59,20 @@ export function ConsolidatedWorkspace({
   workspace,
   tab,
   onTab,
+  onLibrary,
   state,
   run,
   onSeedMap,
+  onDiagnose,
 }: {
   workspace: WorkspaceId;
   tab: WorkspaceTab;
   onTab: (tab: WorkspaceTab) => void;
+  onLibrary: () => void;
   state: Snapshot;
   run: Run;
   onSeedMap?: (world: WorldRef) => void;
+  onDiagnose?: (id: string) => void;
 }) {
   const tabs = WORKSPACE_TABS[workspace],
     active = normalizeWorkspaceTab(workspace, tab),
@@ -76,9 +90,15 @@ export function ConsolidatedWorkspace({
     onTab(target.key);
     requestAnimationFrame(() => document.getElementById(`${workspace}-tab-${target.key}`)?.focus());
   };
+  const picker = active !== 'storage' && state.instances.length > 0 && (
+    <div className="workspace-instance">
+      <InstanceSelect state={state} run={run} />
+    </div>
+  );
   return (
     <section className="workspace" aria-label={label}>
-      <div className="workspace-bar">
+      <div className={workspace === 'saves' ? 'workspace-bar save-workspace-bar' : 'workspace-bar'}>
+        {workspace === 'saves' && picker}
         <div className="workspace-tabs" role="tablist" aria-label={label + '视图'}>
           {tabs.map((item) => (
             <button
@@ -92,22 +112,35 @@ export function ConsolidatedWorkspace({
               onClick={() => onTab(item.key)}
               onKeyDown={(event) => move(event, item.key)}
             >
-              {item.label}
+              <ItemArt name={tabArt[item.key]} size={18} /> {item.label}
             </button>
           ))}
         </div>
-        <div className="workspace-instance">
-          <span>当前实例</span>
-          <InstanceSelect state={state} run={run} />
-        </div>
+        {workspace !== 'saves' && picker}
       </div>
       <div
         className="workspace-panel"
+        key={active}
+        data-view={active}
         id={`${workspace}-panel-${active}`}
         role="tabpanel"
         aria-labelledby={`${workspace}-tab-${active}`}
       >
-        <WorkspaceContent tab={active} state={state} run={run} onSeedMap={onSeedMap} />
+        {!state.selectedInstanceId && active !== 'storage' ? (
+          <Empty
+            art={tabArt[active]}
+            title="选择一个游戏实例"
+            action={<button onClick={onLibrary}>管理实例</button>}
+          />
+        ) : (
+          <WorkspaceContent
+            tab={active}
+            state={state}
+            run={run}
+            onSeedMap={onSeedMap}
+            onDiagnose={onDiagnose}
+          />
+        )}
       </div>
     </section>
   );
@@ -118,11 +151,13 @@ function WorkspaceContent({
   state,
   run,
   onSeedMap,
+  onDiagnose,
 }: {
   tab: WorkspaceTab;
   state: Snapshot;
   run: Run;
   onSeedMap?: (world: WorldRef) => void;
+  onDiagnose?: (id: string) => void;
 }) {
   switch (tab) {
     case 'worlds':
@@ -130,7 +165,14 @@ function WorkspaceContent({
     case 'backups':
       return <BackupsPage state={state} run={run} showInstanceSelect={false} />;
     case 'performance':
-      return <PerformancePage state={state} run={run} showInstanceSelect={false} />;
+      return (
+        <PerformancePage
+          state={state}
+          run={run}
+          showInstanceSelect={false}
+          onDiagnose={onDiagnose}
+        />
+      );
     case 'logs':
       return <LogPage state={state} run={run} showInstanceSelect={false} />;
     case 'crashes':

@@ -1,6 +1,6 @@
 import { Select } from '../Select';
 import { useEffect, useState } from 'react';
-import { Activity, Download, Play, RotateCcw, Save, SlidersHorizontal } from 'lucide-react';
+import { BotMessageSquare, Download, Play, RotateCcw, Save } from 'lucide-react';
 import type {
   Instance,
   LaunchCheck,
@@ -9,6 +9,8 @@ import type {
   Snapshot,
   VideoPresetState,
 } from '../../shared/types';
+import { SettingGroup } from '../components/SettingGroup';
+import { ItemArt } from '../components/ItemArt';
 import { api } from '../api';
 import { Empty, Field, InstanceSelect } from '../components';
 import type { Run } from '../ui';
@@ -25,10 +27,12 @@ export function PerformancePage({
   state,
   run,
   showInstanceSelect = true,
+  onDiagnose,
 }: {
   state: Snapshot;
   run: Run;
   showInstanceSelect?: boolean;
+  onDiagnose?: (id: string) => void;
 }) {
   const instance = state.instances.find((i) => i.id === state.selectedInstanceId);
   return (
@@ -39,7 +43,13 @@ export function PerformancePage({
         </div>
       )}
       {instance ? (
-        <PerformanceContent key={instance.id} instance={instance} state={state} run={run} />
+        <PerformanceContent
+          key={instance.id}
+          instance={instance}
+          state={state}
+          run={run}
+          onDiagnose={onDiagnose}
+        />
       ) : (
         <Empty title="选择一个游戏实例" />
       )}
@@ -50,10 +60,12 @@ function PerformanceContent({
   instance: i,
   state,
   run,
+  onDiagnose,
 }: {
   instance: Instance;
   state: Snapshot;
   run: Run;
+  onDiagnose?: (id: string) => void;
 }) {
   const [settings, setSettings] = useState(i.performance ?? initial),
     [memory, setMemory] = useState(i.memoryMb),
@@ -99,89 +111,89 @@ function PerformanceContent({
   };
   return (
     <div className="performance-page settings-form">
-      <form
-        className="panel setting-section"
-        onSubmit={(e) => {
-          e.preventDefault();
-          setBusy(true);
-          void run(save, '运行设置已保存').finally(() => setBusy(false));
-        }}
-      >
-        <div className="section-title">
-          <SlidersHorizontal size={19} />
-          <h2>运行配置</h2>
-        </div>
-        <fieldset disabled={locked}>
-          <div className="form-grid">
-            <Field label="内存分配">
-              <Select
-                aria-label="内存分配"
-                value={settings.memory}
-                onChange={(e) => patch({ memory: e.target.value as PerformanceSettings['memory'] })}
+      <SettingGroup title="运行配置" art="gear">
+        <form
+          onSubmit={(e) => {
+            e.preventDefault();
+            setBusy(true);
+            void run(save, '运行设置已保存').finally(() => setBusy(false));
+          }}
+        >
+          <fieldset disabled={locked}>
+            <div className="form-grid">
+              <Field label="内存分配">
+                <Select
+                  aria-label="内存分配"
+                  value={settings.memory}
+                  onChange={(e) =>
+                    patch({ memory: e.target.value as PerformanceSettings['memory'] })
+                  }
+                >
+                  <option value="manual">手动</option>
+                  <option value="auto">自动 · 保留系统空间</option>
+                </Select>
+              </Field>
+              <Field
+                label={settings.memory === 'auto' ? '自动分配上限（MiB）' : '最大堆内存（MiB）'}
               >
-                <option value="manual">手动</option>
-                <option value="auto">自动 · 保留系统空间</option>
-              </Select>
-            </Field>
-            <Field label={settings.memory === 'auto' ? '自动分配上限（MiB）' : '最大堆内存（MiB）'}>
-              <input
-                aria-label="堆内存上限"
-                type="number"
-                min={512}
-                max={65536}
-                step={256}
-                value={memory}
-                onChange={(e) => {
-                  setMemory(Number(e.target.value));
-                  setCheck(undefined);
-                }}
-              />
-            </Field>
-            <Field label="垃圾收集器">
-              <Select
-                aria-label="垃圾收集器"
-                value={settings.collector}
-                onChange={(e) =>
-                  patch({ collector: e.target.value as PerformanceSettings['collector'] })
-                }
-              >
-                <option value="auto">自动 · JVM 默认</option>
-                <option value="g1">G1</option>
-                <option value="zgc">ZGC · 低停顿</option>
-              </Select>
-            </Field>
-            <Field label="Java 路径">
-              <input
-                value={javaPath}
-                placeholder="自动匹配 / 跟随全局"
-                onChange={(e) => {
-                  setJavaPath(e.target.value);
-                  setCheck(undefined);
-                }}
-              />
-            </Field>
-          </div>
-          <div className="row split">
-            <label className="check">
-              <input
-                type="checkbox"
-                checked={settings.gcLogging}
-                onChange={(e) => patch({ gcLogging: e.target.checked })}
-              />
-              记录 GC 停顿
-            </label>
-            <button className="primary" disabled={!dirty}>
-              <Save size={15} />
-              保存
-            </button>
-          </div>
-          <p className="performance-note">内存越大不一定越快。GC 记录用于比较停顿，不代表帧率。</p>
-        </fieldset>
-      </form>
+                <input
+                  aria-label="堆内存上限"
+                  type="number"
+                  min={512}
+                  max={65536}
+                  step={256}
+                  value={memory}
+                  onChange={(e) => {
+                    setMemory(Number(e.target.value));
+                    setCheck(undefined);
+                  }}
+                />
+              </Field>
+              <Field label="垃圾收集器">
+                <Select
+                  aria-label="垃圾收集器"
+                  value={settings.collector}
+                  onChange={(e) =>
+                    patch({ collector: e.target.value as PerformanceSettings['collector'] })
+                  }
+                >
+                  <option value="auto">自动 · JVM 默认</option>
+                  <option value="g1">G1</option>
+                  <option value="zgc">ZGC · 低停顿</option>
+                </Select>
+              </Field>
+              <Field label="Java 路径">
+                <input
+                  value={javaPath}
+                  placeholder="自动匹配 / 跟随全局"
+                  onChange={(e) => {
+                    setJavaPath(e.target.value);
+                    setCheck(undefined);
+                  }}
+                />
+              </Field>
+            </div>
+            <div className="row split">
+              <label className="check">
+                <input
+                  type="checkbox"
+                  checked={settings.gcLogging}
+                  onChange={(e) => patch({ gcLogging: e.target.checked })}
+                />
+                记录 GC 停顿
+              </label>
+              <button className="primary" disabled={!dirty}>
+                <Save size={15} />
+                保存
+              </button>
+            </div>
+          </fieldset>
+        </form>
+      </SettingGroup>
       <section className="panel setting-section">
         <div className="section-title split">
           <div className="row">
-            <Activity size={19} />
+            <ItemArt name="dust" size={24} />
             <h2>启动检查</h2>
           </div>
           <button
@@ -241,12 +253,7 @@ function PerformanceContent({
           </div>
         )}
       </section>
-      <section className="panel setting-section">
-        <div className="section-title">
-          <SlidersHorizontal size={19} />
-          <h2>游戏视频预设</h2>
-        </div>
-        <p className="performance-note">调整画距和帧率上限；保留其他游戏设置。</p>
+      <SettingGroup title="游戏视频预设" art="sun">
         <div className="video-presets">
           <button
             disabled={locked || video?.canRestore}
@@ -286,11 +293,17 @@ function PerformanceContent({
             还原
           </button>
         </div>
-      </section>
+      </SettingGroup>
       <section className="panel setting-section">
         <div className="section-title">
-          <Activity size={19} />
+          <ItemArt name="book" size={24} />
           <h2>启动记录</h2>
+          {sessions.length > 0 && onDiagnose && (
+            <button className="text-button" onClick={() => onDiagnose(i.id)}>
+              <BotMessageSquare size={15} />
+              询问助手
+            </button>
+          )}
         </div>
         {!sessions.length && <p className="performance-note">暂无记录</p>}
         {sessions.map((s) => (

@@ -7,9 +7,11 @@ import type { Store } from './core/store';
 import { checkGamePath } from './core/game-folders';
 import { ProjectionWorkshop } from './core/projection-workshop';
 import type { ProjectionAssetService } from './core/projection-assets';
+import type { Resources } from './core/resources';
 export function projectionHandlers(c: {
   workshop: ProjectionWorkshop;
   assets: ProjectionAssetService;
+  resources: Pick<Resources, 'file'>;
   store: Store;
   window: () => BrowserWindow;
   writable: (id: string) => Promise<void>;
@@ -29,6 +31,10 @@ export function projectionHandlers(c: {
         source = result.filePaths[0];
       }
       return c.workshop.importFile(source);
+    },
+    projectionImportResource: async ({ id, name }) => {
+      const source = await c.resources.file(id, 'schematics', name);
+      return c.workshop.importFile(source, JSON.stringify([id, name]));
     },
     projectionOpen: (id) => c.workshop.open(id),
     projectionEdit: (value) => c.workshop.edit(value),
@@ -74,6 +80,7 @@ export function projectionHandlers(c: {
     | 'projectionState'
     | 'projectionRecover'
     | 'projectionImport'
+    | 'projectionImportResource'
     | 'projectionOpen'
     | 'projectionEdit'
     | 'projectionUndo'

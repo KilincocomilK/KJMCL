@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { ExternalLink, Search, Star, X } from 'lucide-react';
 import type {
   ContentKind,
@@ -225,10 +225,14 @@ export function ContentBrowser({
   kind,
   state,
   run,
+  onSourceChange,
+  projectAction,
 }: {
   kind: ContentKind;
   state: Snapshot;
   run: Run;
+  onSourceChange?: (source: ContentSource) => void;
+  projectAction?: (project: ContentProject) => ReactNode;
 }) {
   const id = state.selectedInstanceId!;
   const [query, setQuery] = useState(''),
@@ -256,12 +260,13 @@ export function ContentBrowser({
     setLoading(false);
     setFailed(false);
   };
-  const search = async (offset = 0, text = query.trim()) => {
+  const search = async (offset = 0, text = query.trim(), order = sort) => {
     const request = ++epoch.current;
     setLoading(true);
     setFailed(false);
+    setResult(undefined);
     const next = await run(() =>
-      api.catalogSearch({ id, kind, query: text, source, offset, sort }),
+      api.catalogSearch({ id, kind, query: text, source, offset, sort: order }),
     );
     if (request !== epoch.current) return;
     setResult(next ? { ...next, offset, query: text } : undefined);
@@ -292,6 +297,7 @@ export function ContentBrowser({
           value={source}
           onChange={(e) => {
             setSource(e.target.value as ContentSource);
+            onSourceChange?.(e.target.value as ContentSource);
             reset();
           }}
         >
@@ -302,8 +308,9 @@ export function ContentBrowser({
           aria-label="内容排序"
           value={sort}
           onChange={(e) => {
-            setSort(e.target.value as typeof sort);
-            reset();
+            const order = e.target.value as typeof sort;
+            setSort(order);
+            if (result || loading) void search(0, result?.query ?? query.trim(), order);
           }}
         >
           <option value="relevance">相关度</option>
@@ -341,6 +348,7 @@ export function ContentBrowser({
             <div className="mod-list panel">
               {result.items.map((p) => (
                 <article className="mod-row" key={p.source + p.projectId}>
+                  {p.icon && <img className="mod-logo" src={p.icon} alt="" loading="lazy" />}
                   <div className="grow">
                     <strong>{p.title}</strong>
                     <p>{p.description}</p>
@@ -350,6 +358,15 @@ export function ContentBrowser({
                       次下载
                     </small>
                   </div>
+                  <button
+                    type="button"
+                    className="icon"
+                    title="打开发布页"
+                    aria-label={'打开发布页 ' + p.title}
+                    onClick={() => void run(() => api.external(p.url))}
+                  >
+                    <ExternalLink size={16} aria-hidden="true" />
+                  </button>
                   <FavoriteButton
                     project={{ source: p.source, kind: p.kind, projectId: p.projectId }}
                     state={state}
@@ -358,6 +375,7 @@ export function ContentBrowser({
                   <button disabled={loading} onClick={() => setProject(p)}>
                     选择版本
                   </button>
+                  {projectAction?.(p)}
                 </article>
               ))}
             </div>

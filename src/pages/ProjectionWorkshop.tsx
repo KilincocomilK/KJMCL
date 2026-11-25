@@ -1,7 +1,7 @@
+import { matchesSearch } from '../../shared/search';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import {
-  Box,
   Download,
   Expand,
   FolderOpen,
@@ -22,6 +22,7 @@ import type {
 } from '../../shared/projection';
 import { api } from '../api';
 import type { Run } from '../ui';
+import { ItemArt } from '../components/ItemArt';
 import { Modal } from '../components';
 import { Select } from '../Select';
 import {
@@ -44,10 +45,14 @@ import '../projection/projection.css';
 export function ProjectionWorkshopPage({
   state,
   active = true,
+  importDocument,
+  onImported,
 }: {
   state: Snapshot;
   run: Run;
   active?: boolean;
+  importDocument?: ProjectionDocument;
+  onImported?: () => void;
 }) {
   const [doc, setDoc] = useState<ProjectionDocument | null>(null),
     [entries, setEntries] = useState<ProjectionEntry[]>([]),
@@ -177,6 +182,13 @@ export function ProjectionWorkshopPage({
       selectionGeneration.current++;
     };
   }, []);
+  useEffect(() => {
+    if (!importDocument || !loaded || busy || !active) return;
+    setError('');
+    setNotice('');
+    apply(importDocument);
+    onImported?.();
+  }, [importDocument, loaded, busy, active, onImported]);
   useEffect(
     () =>
       api.onEvent((event) => {
@@ -293,7 +305,7 @@ export function ProjectionWorkshopPage({
       .filter(
         (m) =>
           !isAir(doc.palette[m.palette]) &&
-          blockState(doc.palette[m.palette]).toLowerCase().includes(filter.toLowerCase()),
+          matchesSearch(filter, blockState(doc.palette[m.palette])),
       )
       .map((m) => ({ ...m, selected: counts.get(m.palette) ?? 0 }))
       .sort((a, b) => b.count - a.count);
@@ -329,16 +341,18 @@ export function ProjectionWorkshopPage({
       }}
     >
       <div className="projection-toolbar">
-        <div className="projection-summary">
-          <strong>{doc?.name ?? '投影工坊'}</strong>
-          <small>
-            {doc
-              ? `${doc.dimensions.join(' × ')} · ${doc.nonAir.toLocaleString()} 方块 · ${doc.format}${assets ? ` · 原版贴图 ${assets.version}` : ''}`
-              : '打开 Litematic、Schem 或结构 NBT'}
-          </small>
-        </div>
+        {doc && (
+          <div className="projection-summary">
+            <strong>{doc.name}</strong>
+            <small>
+              {doc.dimensions.join(' × ')} · {doc.nonAir.toLocaleString()} 方块 · {doc.format}
+              {assets && ` · 原版贴图 ${assets.version}`}
+            </small>
+          </div>
+        )}
         <div className="projection-actions">
           <button
+            hidden={!doc}
             title="撤销 Ctrl+Z"
             aria-label="撤销投影编辑"
             disabled={busy || !doc?.canUndo}
@@ -347,6 +361,7 @@ export function ProjectionWorkshopPage({
             <Undo2 size={17} />
           </button>
           <button
+            hidden={!doc}
             title="重做 Ctrl+Y"
             aria-label="重做投影编辑"
             disabled={busy || !doc?.canRedo}
@@ -354,7 +369,7 @@ export function ProjectionWorkshopPage({
           >
             <Redo2 size={17} />
           </button>
-          <button disabled={busy} onClick={() => importFile()}>
+          <button hidden={!doc} disabled={busy} onClick={() => importFile()}>
             <FolderOpen size={16} />
             打开投影
           </button>
@@ -410,11 +425,11 @@ export function ProjectionWorkshopPage({
         <p role="status">正在读取作品…</p>
       ) : !doc ? (
         <div className="projection-empty">
-          <Box size={56} />
+          <ItemArt name="plan" size={64} />
           <h2>打开你的投影</h2>
-          <p>拖入文件，查看、分层和编辑建筑。</p>
+          <p>可拖入 Litematic、Schem 或结构 NBT 文件</p>
           <button className="primary" disabled={busy} onClick={() => importFile()}>
-            选择投影文件
+            打开投影
           </button>
           {error && (
             <>
@@ -847,93 +862,103 @@ export function ProjectionWorkshopPage({
       )}
       {modal === 'library' && (
         <Modal title="投影作品库" onClose={() => setModal(null)}>
-          {entries.length ? (
-            entries.map((entry) => (
-              <div className="projection-library-item" key={entry.id}>
-                <button
-                  disabled={busy}
-                  onClick={() => void execute(() => api.projectionOpen(entry.id), apply)}
-                >
-                  <Box size={20} />
-                  <span>
-                    {entry.name}
-                    <small>{new Date(entry.modifiedAt).toLocaleString()}</small>
-                  </span>
-                </button>
-                <button
-                  disabled={busy}
-                  onClick={() => {
-                    setRemoveId(entry.id);
-                    setModal('remove');
-                  }}
-                >
-                  移除
-                </button>
-              </div>
-            ))
-          ) : (
-            <p>还没有投影作品。</p>
-          )}
+          <div className="form-body projection-library">
+            {entries.length ? (
+              entries.map((entry) => (
+                <div className="projection-library-item" key={entry.id}>
+                  <button
+                    disabled={busy}
+                    onClick={() => void execute(() => api.projectionOpen(entry.id), apply)}
+                  >
+                    <ItemArt name="plan" size={24} />
+                    <span>
+                      {entry.name}
+                      <small>{new Date(entry.modifiedAt).toLocaleString()}</small>
+                    </span>
+                  </button>
+                  <button
+                    disabled={busy}
+                    onClick={() => {
+                      setRemoveId(entry.id);
+                      setModal('remove');
+                    }}
+                  >
+                    移除
+                  </button>
+                </div>
+              ))
+            ) : (
+              <p>还没有投影作品。</p>
+            )}
+          </div>
         </Modal>
       )}
       {modal === 'remove' && (
         <Modal title="移除投影作品" onClose={() => setModal('library')}>
-          <p>移除作品库副本及编辑历史，原文件保留。</p>
-          <button
-            className="danger"
-            disabled={busy}
-            onClick={() =>
-              void execute(
-                () => api.projectionRemove(removeId),
-                () => {
-                  setEntries((old) => old.filter((item) => item.id !== removeId));
-                  if (doc?.id === removeId) setDoc(null);
-                  setModal('library');
-                },
-              )
-            }
-          >
-            移除作品
-          </button>
+          <div className="form-body">
+            <p>移除作品库副本及编辑历史，原文件保留。</p>
+          </div>
+          <div className="modal-footer">
+            <button
+              className="danger"
+              disabled={busy}
+              onClick={() =>
+                void execute(
+                  () => api.projectionRemove(removeId),
+                  () => {
+                    setEntries((old) => old.filter((item) => item.id !== removeId));
+                    if (doc?.id === removeId) setDoc(null);
+                    setModal('library');
+                  },
+                )
+              }
+            >
+              移除作品
+            </button>
+          </div>
         </Modal>
       )}
       {modal === 'install' && doc && ref && (
         <Modal title="放入游戏实例" onClose={() => setModal(null)}>
-          <Select
-            aria-label="投影目标实例"
-            value={instanceId}
-            onChange={(e) => setInstanceId(e.target.value)}
-          >
-            {state.instances.map((instance) => (
-              <option value={instance.id} key={instance.id}>
-                {instance.name}
-              </option>
-            ))}
-          </Select>
-          <Select
-            aria-label="投影安装格式"
-            value={format}
-            onChange={(e) => setFormat(e.target.value as typeof format)}
-          >
-            <option value="litematic">Litematic</option>
-            <option value="schem">Sponge Schem</option>
-            <option value="nbt">结构 NBT</option>
-          </Select>
-          <button
-            className="primary"
-            disabled={busy || !instanceId}
-            onClick={() =>
-              void execute(
-                () => api.projectionInstall({ ...ref, instanceId, format }),
-                () => {
-                  setModal(null);
-                  setNotice('已放入实例 schematics 目录');
-                },
-              )
-            }
-          >
-            放入实例
-          </button>
+          <div className="form-body">
+            <Select
+              aria-label="投影目标实例"
+              value={instanceId}
+              onChange={(e) => setInstanceId(e.target.value)}
+            >
+              {state.instances.map((instance) => (
+                <option value={instance.id} key={instance.id}>
+                  {instance.name}
+                </option>
+              ))}
+            </Select>
+            <Select
+              aria-label="投影安装格式"
+              value={format}
+              onChange={(e) => setFormat(e.target.value as typeof format)}
+            >
+              <option value="litematic">Litematic</option>
+              <option value="schem">Sponge Schem</option>
+              <option value="nbt">结构 NBT</option>
+            </Select>
+          </div>
+          <div className="modal-footer">
+            <button
+              className="primary"
+              disabled={busy || !instanceId}
+              onClick={() =>
+                void execute(
+                  () => api.projectionInstall({ ...ref, instanceId, format }),
+                  () => {
+                    setModal(null);
+                    setNotice('已放入实例 schematics 目录');
+                  },
+                )
+              }
+            >
+              放入实例
+            </button>
+          </div>
         </Modal>
       )}
     </section>

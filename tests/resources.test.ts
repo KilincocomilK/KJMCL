@@ -7,6 +7,7 @@ import { gzipSync } from 'node:zlib';
 import { Store } from '../electron/core/store';
 import { claimDirectory } from '../electron/core/instances';
 import { Resources } from '../electron/core/resources';
+import { LocalResourceCards } from '../electron/core/resource-cards';
 import { readNbt, schematicPreview } from '../electron/core/resource-preview';
 import { schemas } from '../shared/schema';
 import type { Instance } from '../shared/types';
@@ -49,6 +50,90 @@ async function setup() {
   };
   return { root, store, r: new Resources(store), zip };
 }
+it('reads declared local artwork, loader versions and world icons with bounded archive access', async () => {
+  const { r, store, zip } = await setup();
+  const png = await readFile('build/icon.png');
+  const thumbnail = vi.fn(() => 'data:image/png;base64,fixture');
+  const cards = new LocalResourceCards(store, r, thumbnail);
+  const add = async (
+    kind: 'mods' | 'resourcepacks',
+    name: string,
+    entries: Record<string, string | Buffer>,
+  ) => {
+    const file = await zip(name, entries);
+    await writeFile(await r.location('fabric', kind, name, true), await readFile(file));
+  };
+  await add('mods', 'fabric.jar.disabled', {
+    'assets/fabric/test.png': png,
+    'assets/sodium/lang/zh_cn.json': '{"modmenu.nameTranslation.sodium":"自定义中文名称"}',
+    'fabric.mod.json': JSON.stringify({
+      id: 'sodium',
+      name: 'Sodium',
+      version: '0.6.13',
+      icon: { 16: 'missing.png', 64: 'assets/fabric/test.png' },
+    }),
+  });
+  await add('mods', 'quilt.jar', {
+    'quilt.mod.json': JSON.stringify({
+      quilt_loader: {
+        id: 'quilted',
+        version: '2',
+        metadata: { name: 'Quilted', icon: 'icon.png' },
+      },
+    }),
+    'icon.png': png,
+  });
+  await add('mods', 'forge.jar', {
+    'META-INF/mods.toml':
+      '[[mods]]\nmodId="forgeid"\ndisplayName="Forge Mod"\nversion="' +
+      '$' +
+      '{file.jarVersion}"\nlogoFile="logo.png"',
+    'META-INF/MANIFEST.MF': 'Manifest-Version: 1.0\r\nImplementation-Version: 3.4\r\n',
+    'logo.png': png,
+  });
+  await add('mods', 'escape.jar', {
+    'fabric.mod.json': '{"id":"unsafe","version":"3","icon":"../outside.png"}',
+  });
+  const mods = await cards.list('fabric', 'mods', [
+    'fabric.jar.disabled',
+    'quilt.jar',
+    'forge.jar',
+    'escape.jar',
+  ]);
+  expect(mods[0].localizedTitle).toBe('自定义中文名称');
+  expect(mods.map((m) => [m.modId, m.version, !!m.icon])).toEqual([
+    ['sodium', '0.6.13', true],
+    ['quilted', '2', true],
+    ['forgeid', '3.4', true],
+    ['unsafe', '3', false],
+  ]);
+  await cards.list('fabric', 'mods', ['quilt.jar']);
+  expect(thumbnail).toHaveBeenCalledTimes(3);
+  await add('mods', 'quilt.jar', {
+    'quilt.mod.json': '{"quilt_loader":{"id":"changed","version":"3"}}',
+  });
+  expect((await cards.list('fabric', 'mods', ['quilt.jar']))[0]).toMatchObject({
+    modId: 'changed',
+    version: '3',
+  });
+  await add('resourcepacks', 'english.zip', {
+    'pack.png': png,
+    'pack.mcmeta': '{"pack":{"description":"中文材质"}}',
+  });
+  expect((await cards.list('fabric', 'resourcepacks', ['english.zip']))[0]).toMatchObject({
+    icon: expect.any(String),
+    description: '中文材质',
+  });
+  const world = path.join(store.dir('fabric'), 'saves', 'World');
+  await mkdir(world, { recursive: true });
+  await writeFile(path.join(world, 'level.dat'), 'fixture');
+  await writeFile(path.join(world, 'icon.png'), png);
+  expect((await cards.list('fabric', 'worlds', ['World']))[0].icon).toBeTruthy();
+  expect(
+    schemas.localResourceCards.safeParse({ id: 'fabric', kind: 'worlds', names: ['../other'] })
+      .success,
+  ).toBe(false);
+});
 it('identifies contents and only recommends a uniquely matching instance from metadata', async () => {
   const { r, zip } = await setup();
   const mod = await zip('random.jar', {

@@ -148,7 +148,6 @@ function ImportReview({
       }}
     >
       <div className="resource-import-body">
-        <p className="muted">确认目标实例后添加。原文件保留，同名文件默认跳过。</p>
         {!state.instances.length && <p role="alert">请先创建游戏实例，再添加资源。</p>}
         {!results && (
           <label>
@@ -172,7 +171,7 @@ function ImportReview({
           <section className="import-row" key={file.token}>
             <strong>{file.name}</strong>
             <small>{size(file.size)}</small>
-            <p>{file.error || file.reason}</p>
+            {(file.error || file.reason) && <p>{file.error || file.reason}</p>}
             {!file.error && !results && (
               <div className="resource-import-controls">
                 <Select

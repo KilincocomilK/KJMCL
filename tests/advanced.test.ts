@@ -91,7 +91,7 @@ it('migrates v1 without losing directories or the original backup', async () => 
   delete v1.instances[0].gameDir;
   await atomicJson(path.join(store.root, 'state.json'), v1);
   const migrated = new Store(store.root);
-  expect(migrated.data.schemaVersion).toBe(7);
+  expect(migrated.data.schemaVersion).toBe(9);
   expect(migrated.dir('source')).toBe(path.join(store.root, 'instances/source'));
   expect(
     JSON.parse(await readFile(path.join(store.root, 'state.json.v1.bak'), 'utf8')).schemaVersion,
@@ -414,7 +414,13 @@ it('imports a CurseForge manifest with exact dependency pins and exports a stand
     mc = new Minecraft(store, net),
     cf = new CurseForge(store, net, vault),
     tasks = new Tasks(() => {});
-  vi.spyOn(mc, 'install').mockResolvedValue();
+  let finishRuntime!: () => void;
+  vi.spyOn(mc, 'install').mockImplementation(async (_id, work) => {
+    work.progress(80, '运行库');
+    await new Promise<void>((resolve) => {
+      finishRuntime = resolve;
+    });
+  });
   const install = vi.spyOn(cf, 'install').mockResolvedValue();
   const zip = new AdmZip();
   zip.addFile(
@@ -448,8 +454,18 @@ it('imports a CurseForge manifest with exact dependency pins and exports a stand
     },
     cf,
   );
-  const id = await packs.import(source);
+  const importing = packs.import(source);
+  const task = tasks.items[0];
+  expect(task.title).toBe('导入整合包');
+  const id = await importing;
+  expect(tasks.items).toHaveLength(1);
+  expect(task.title).toBe('导入 Neo Pack');
+  expect(tasks.busy(id)).toBe(true);
+  expect(task.progress).toBeGreaterThan(0);
+  expect(task.progress).toBeLessThan(80);
+  finishRuntime();
   await vi.waitFor(() => expect(tasks.items[0].status).toBe('completed'));
+  expect(tasks.busy(id)).toBe(false);
   expect(store.instance(id).loader).toBe('neoforge');
   expect(store.instance(id).loaderVersion).toBe('21.1.1');
   expect(install.mock.calls[0][4]).toEqual(

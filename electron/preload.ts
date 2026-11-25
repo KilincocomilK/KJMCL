@@ -1,9 +1,14 @@
 import { contextBridge, ipcRenderer, webUtils } from 'electron';
+import type { LauncherEvent, LogLine } from '../shared/types';
 const methods = [
+  'aiState', 'aiHistory', 'aiSaveProvider', 'aiRemoveProvider', 'aiTestProvider',
+  'aiSyncModels', 'aiSelectModel', 'aiSend', 'aiCancel', 'aiDeleteChat', 'aiDecide',
+  'aiSetMcp', 'aiCopyMcp', 'aiRotateMcp',
   'projectionAssets',
   'projectionState',
   'projectionRecover',
   'projectionImport',
+  'projectionImportResource',
   'projectionOpen',
   'projectionEdit',
   'projectionUndo',
@@ -54,6 +59,7 @@ const methods = [
   'pickBackground',
   'resetBackground',
   'updateAppearance',
+  'setSidebarOrder',
   'organizeInstance',
   'catalogSearch',
   'catalogVersions',
@@ -70,8 +76,18 @@ const methods = [
   'readCrash',
   'exportCrash',
   'saveWorlds',
+  'searchReden',
+  'redenDetails',
+  'redenDelivery',
+  'openRedenDownload',
+  'previewReden',
+  'installReden',
+  'openReden',
   'scanWorld',
   'worldRegion',
+  'worldTerrainTiles',
+  'planWorldSelection',
+  'editGameRules',
   'planWorldPrune',
   'applyWorldPrune',
   'editWorld',
@@ -82,6 +98,7 @@ const methods = [
   'pickResources',
   'importResources',
   'resources',
+  'localResourceCards',
   'previewResource',
   'renameResource',
   'deleteResource',
@@ -111,6 +128,7 @@ const methods = [
   'setGameLayout',
   'worlds',
   'backups',
+  'chooseBackupExport',
   'backupWorld',
   'restoreBackup',
   'deleteBackup',
@@ -126,6 +144,9 @@ const methods = [
   'preparePack',
   'publishPack',
   'snapshot',
+  'checkLauncherUpdate',
+  'openLauncherRelease',
+  'dismissNotification',
   'lightweightState',
   'setLightweight',
   'settings',
@@ -174,8 +195,12 @@ contextBridge.exposeInMainWorld(
     ]),
     [
       'onEvent',
-      (listener: (event: unknown) => void) => {
-        const handler = (_event: unknown, value: unknown) => listener(value);
+      (listener: (event: LauncherEvent) => void) => {
+        const handler = (_event: unknown, value: LauncherEvent | LogLine[]) => {
+          if (Array.isArray(value)) {
+            for (const line of value) listener({ type: 'log', line });
+          } else listener(value);
+        };
         ipcRenderer.on('kjmcl:event', handler);
         return () => ipcRenderer.removeListener('kjmcl:event', handler);
       },

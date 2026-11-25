@@ -1,3 +1,4 @@
+import { answerSystemDialog } from './desktop-test-utils.mjs';
 import { _electron as electron, expect } from '@playwright/test';
 import { mkdtemp, mkdir, writeFile, readFile, rm } from 'node:fs/promises';
 import { realpathSync } from 'node:fs';
@@ -79,6 +80,7 @@ try {
   });
   await writeFile(path.join(external, 'world.txt'), 'world-fixture');
   await page.getByRole('button', { name: '启动器设置', exact: true }).click();
+  await page.getByText('账户与存储', { exact: true }).click();
   await app.evaluate(({ dialog }, target) => {
     dialog.showOpenDialog = async () => ({ canceled: false, filePaths: [target] });
   }, target);
@@ -127,10 +129,10 @@ try {
     mapState,
   );
   await page.getByRole('button', { name: '启动器设置', exact: true }).click();
-  await app.evaluate(({ dialog }) => {
-    dialog.showMessageBox = async () => ({ response: 1 });
-  });
-  await page.getByRole('button', { name: '清理原数据', exact: true }).click();
+  await answerSystemDialog(app,
+    () => page.getByRole('button', { name: '清理原数据', exact: true }).click(),
+    (dialog) => dialog.getByRole('button', { name: '清理原数据', exact: true }).click(),
+  );
   await expect
     .poll(async () => page.evaluate(async () => (await window.kjmcl.snapshot()).storage.retired))
     .toBeUndefined();

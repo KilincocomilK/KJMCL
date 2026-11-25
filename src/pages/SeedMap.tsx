@@ -1,3 +1,4 @@
+import { matchesSearch } from '../../shared/search';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import {
@@ -30,6 +31,7 @@ import {
   type SeedMapState,
   type SeedMapWorld,
 } from '../../shared/seed-map';
+import { ItemArt } from '../components/ItemArt';
 import { api } from '../api';
 import { Select } from '../Select';
 import { Field, Modal } from '../components';
@@ -180,9 +182,7 @@ export function SeedMapPage({
         ) ?? [],
       [info, map?.dimension, map?.version],
     );
-  const displayedTypes = enabledTypes.filter((s) =>
-    (s.name + s.id).toLowerCase().includes(structureFilter.toLowerCase()),
-  );
+  const displayedTypes = enabledTypes.filter((s) => matchesSearch(structureFilter, s.name, s.id));
   const biomes = useMemo(
     () =>
       info?.biomes.filter(
@@ -765,9 +765,8 @@ export function SeedMapPage({
       )}
       {!map ? (
         <div className="seed-empty">
-          <PinIcon size={40} />
+          <ItemArt name="map" size={64} />
           <h2>从一个种子开始</h2>
-          <p>输入 Java 版世界种子，或读取已有存档。</p>
         </div>
       ) : (
         <>
@@ -1161,7 +1160,7 @@ export function SeedMapPage({
                   />
                   <div className="seed-biomes">
                     {biomes
-                      .filter((b) => b.name.toLowerCase().includes(biomeFilter.toLowerCase()))
+                      .filter((b) => matchesSearch(biomeFilter, b.name, b.id))
                       .map((biome) => (
                         <button
                           key={biome.id}

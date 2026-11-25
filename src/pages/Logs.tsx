@@ -1,6 +1,7 @@
 import { useState, useEffect, useLayoutEffect, useRef, useMemo } from 'react';
-import { ArrowDownToLine, Copy, Pause, Play, Search, Terminal } from 'lucide-react';
+import { ArrowDownToLine, Copy, Pause, Play, Search } from 'lucide-react';
 import type { Snapshot, LogLine } from '../../shared/types';
+import { ItemArt } from '../components/ItemArt';
 import { api } from '../api';
 import { InstanceSelect } from '../components';
 import { Select } from '../Select';
@@ -37,19 +38,28 @@ export function LogPage({
     setFollowing(true);
     if (!id || !current) return;
     let active = true;
+    let frame: number | undefined;
+    const refresh = () => {
+      if (current.paused || frame !== undefined) return;
+      frame = requestAnimationFrame(() => {
+        frame = undefined;
+        if (!current.paused) setView({ id, lines: current.visible });
+      });
+    };
     const off = api.onEvent((event) => {
       if (event.type !== 'log' || event.line.instanceId !== id) return;
       current.append(event.line);
-      if (!current.paused) setView({ id, lines: current.visible });
+      refresh();
     });
     void run(async () => {
       const initial = await api.logs(id);
       if (!active) return;
       current.seed(initial);
-      if (!current.paused) setView({ id, lines: current.visible });
+      refresh();
     });
     return () => {
       active = false;
+      if (frame !== undefined) cancelAnimationFrame(frame);
       off();
     };
   }, [id, run]);
@@ -157,7 +167,7 @@ export function LogPage({
           ))
         ) : (
           <div className="console-empty">
-            <Terminal size={28} />
+            <ItemArt name="reel" size={48} />
             <p>{view.id === id && view.lines.length ? '没有匹配的日志' : '暂无日志'}</p>
           </div>
         )}

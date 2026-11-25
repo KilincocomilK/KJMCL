@@ -5,6 +5,7 @@ import { Skins } from './core/skins';
 import { CurseForge } from './core/curseforge';
 import { Publishing } from './core/publishing';
 import { featureHandlers } from './features';
+import { assistantFeatures } from './assistant-features';
 import { skinEditorHandlers } from './skin-editor-features';
 import { SkinEditorStorage } from './core/skin-editor';
 import { SeedMapEngine } from './core/seed-map';
@@ -16,6 +17,7 @@ import { projectionHandlers } from './projection-features';
 import { exportSkinAnimation } from './core/skin-animation';
 import { resourceHandlers } from './resource-features';
 import { Resources } from './core/resources';
+import { Reden, redenPage, redenDownload } from './core/reden';
 import { Terracotta } from './core/terracotta';
 import { SaveManager } from './core/save-manager';
 import { saveHandlers } from './save-features';
@@ -25,12 +27,14 @@ import { ModAudit } from './core/mod-audit';
 import { DiskUsage } from './core/disk-usage';
 import { CrashReports } from './core/crash-reports';
 import { AppearanceManager } from './core/appearance';
+import { LocalResourceCards } from './core/resource-cards';
 import { privateValues } from './core/private-values';
 import { launchChoices } from './core/launch-options';
 import { moveAccount } from './core/account-order';
 import { exportCompleteLog } from './core/log-export';
 import { LightweightMode } from './core/lightweight';
 import { WindowHost } from './window-host';
+import { showSystemDialog } from './system-dialog';
 import { app, BrowserWindow, ipcMain, dialog, shell, nativeImage } from 'electron';
 import path from 'node:path';
 import os from 'node:os';
@@ -38,6 +42,7 @@ import { mkdir, writeFile, copyFile } from 'node:fs/promises';
 import { randomUUID } from 'node:crypto';
 import { Store } from './core/store';
 import { Tasks } from './core/tasks';
+import { LauncherUpdates } from './core/launcher-updates';
 import { Network } from './core/network';
 import { Minecraft } from './core/minecraft';
 import { Java } from './core/java';
@@ -51,7 +56,8 @@ import { uninstallData } from './uninstall';
 import { mkdirSync, mkdtempSync } from 'node:fs';
 import { offlineUuid } from './core/files';
 import { schemas } from '../shared/schema';
-import type { Api, Instance, LauncherEvent, LightweightState } from '../shared/types';
+import { activities, noticeDuration } from '../shared/activity';
+import type { Api, Instance, LauncherEvent, LightweightState, LogLine } from '../shared/types';
 app.setName('KJMCL');
 const uninstalling = process.argv.includes('--kjmcl-uninstall-data');
 let layout: StorageLayout | undefined, bootError: unknown;
@@ -84,10 +90,6 @@ try {
   bootError = e;
 }
 let window: BrowserWindow | undefined;
-app.on('second-instance', () => {
-  window?.show();
-  window?.focus();
-});
 app
   .whenReady()
   .then(async () => {
@@ -102,8 +104,13 @@ app
     let lightweight: LightweightMode | undefined;
     let host: WindowHost | undefined;
     let lastLightState = '';
-    const emit = (event: LauncherEvent) => {
-      if (host?.lightweight && (event.type === 'log' || event.type === 'state')) return;
+    const emit = (event: LauncherEvent | LogLine[]) => {
+      if (
+        host?.lightweight &&
+        (Array.isArray(event) ||
+          ['log', 'state', 'assistant', 'assistant-progress'].includes(event.type))
+      )
+        return;
       if (window && !window.isDestroyed()) window.webContents.send('kjmcl:event', event);
     };
     const lightState = (): LightweightState => ({
@@ -116,6 +123,9 @@ app
         window.isFocused(),
       games: [...launcher.processes.keys()].map((id) => ({ id, name: store.instance(id).name })),
       tasks: tasks.items.filter((task) => task.status === 'running').length,
+      activity: host?.lightweight
+        ? activities(tasks.items, launcherUpdates.state, Date.now() - noticeDuration)[0]
+        : undefined,
     });
     let timer: NodeJS.Timeout | undefined;
     const changed = () => {
@@ -144,16 +154,16 @@ app
       java = new Java(store, net),
       auth = new Auth(store, net, tasks, changed),
       mods = new Mods(store, net),
-      launcher = new Launcher(
-        store,
-        mc,
-        java,
-        auth,
-        changed,
-        (line) => emit({ type: 'log', line }),
-        (count) => lightweight?.running(count),
+      launcher = new Launcher(store, mc, java, auth, changed, emit, (count) =>
+        lightweight?.running(count),
       );
     const vault = new Vault(store.root),
+      launcherUpdates = new LauncherUpdates(
+        app.getVersion(),
+        net,
+        changed,
+        process.env.KJMCL_UPDATE_FEED?.trim() || undefined,
+      ),
       ygg = new Yggdrasil(store, net, vault),
       skins = new Skins(store, net, auth, ygg),
       cf = new CurseForge(store, net, vault),
@@ -222,51 +232,110 @@ app
     const video = new VideoSettings(store);
     const resources = new Resources(store),
       terracotta = new Terracotta(store.root, net);
+    const reden = new Reden(net, projectionWorkshop, resources);
     const saves = new SaveManager(
       store,
       app.isPackaged
         ? path.join(process.resourcesPath, 'native')
         : path.join(__dirname, '../dist-native'),
     );
-    let exitingTerracotta = false,
+    let quitting = false,
       quitReady = false;
-    app.on('before-quit', (event) => {
-      if (quitReady) return;
-      event.preventDefault();
-      if (exitingTerracotta) return;
-      exitingTerracotta = true;
+    const assistant = assistantFeatures({
+      store,
+      vault,
+      net,
+      video,
+      resources,
+      changed,
+      emit,
+      available: () =>
+        !quitting &&
+        !storage.pendingRestart &&
+        !tasks.busy('storage') &&
+        !tasks.busy('maintenance'),
+      sessions: (id) => launcher.diagnostics.list(id),
+      withInstance: async (id, work) => {
+        await writable(id);
+        await tasks.exclusive(id, work);
+      },
+    });
+    const assistantOperations = new Set<Promise<unknown>>();
+    let quitPromptOpen = false;
+    const requestQuit = async () => {
+      if (quitting || quitPromptOpen) return;
+      const running = tasks.items.filter((task) => task.status === 'running');
+      const games = launcher.processes.size > 0;
+      if (running.length || games) {
+        quitPromptOpen = true;
+        try {
+          const downloading =
+            running.length > 0 && running.every((task) => task.kind === 'download');
+          const activity = downloading ? '下载' : '任务';
+          const detail = [
+            running.length ? '退出会取消正在进行的' + activity + '。' : '',
+            games ? '已启动的游戏会继续运行。' : '',
+          ].join('');
+          const result = await showSystemDialog(window, {
+            message: '退出 KJMCL？',
+            detail,
+            buttons: [downloading ? '继续下载' : '留在启动器', '退出启动器'],
+            defaultId: 0,
+            cancelId: 0,
+          });
+          if (result.response !== 1) return;
+        } finally {
+          quitPromptOpen = false;
+        }
+      }
+      quitting = true;
+      auth.cancel();
+      const cancelled = tasks.cancelAll();
+      assistant.cancelRequests();
       seedMapEngine.cancelAll();
       projectionAssets.cancel();
-      void Promise.allSettled([
+      const results = await Promise.allSettled([
         terracotta.dispose(),
+        cancelled,
         skinEditorStorage.flush(),
         seedMapStorage.flush(),
         projectionWorkshop.flush(),
         projectionAssets.flush(),
-      ]).then(async (results) => {
-        try {
-          // A final drain includes writes submitted while Terracotta was still stopping.
-          const saved = await Promise.allSettled([
-            skinEditorStorage.flush(),
-            seedMapStorage.flush(),
-            projectionWorkshop.flush(),
-            projectionAssets.flush(),
-          ]);
-          const errors = [results[0], ...saved].filter(
-            (result): result is PromiseRejectedResult => result.status === 'rejected',
-          );
-          if (errors.length)
-            dialog.showErrorBox(
-              'KJMCL 退出时出现问题',
-              errors.map((result) => String(result.reason)).join('\n'),
-            );
-        } finally {
-          quitReady = true;
-          app.quit();
+        ...assistantOperations,
+      ]);
+      try {
+        // Include writes submitted while downloads and Terracotta were stopping.
+        const saved = await Promise.allSettled([
+          launcher.flushLogs(),
+          skinEditorStorage.flush(),
+          seedMapStorage.flush(),
+          projectionWorkshop.flush(),
+          projectionAssets.flush(),
+        ]);
+        const errors = [results[0], ...saved].filter(
+          (result): result is PromiseRejectedResult => result.status === 'rejected',
+        );
+        if (errors.length) {
+          await showSystemDialog(window, {
+            message: '退出时出现问题',
+            detail: errors.map((result) => String(result.reason)).join('\n'),
+            buttons: ['关闭'],
+            defaultId: 0,
+            cancelId: 0,
+          });
         }
-      });
+      } finally {
+        quitReady = true;
+        app.quit();
+      }
+    };
+    app.on('before-quit', (event) => {
+      if (quitReady) return;
+      event.preventDefault();
+      void requestQuit();
     });
     app.on('will-quit', () => {
+      void assistant.mcp.dispose();
       seedMapEngine.dispose();
       lightweight?.dispose();
       host?.dispose();
@@ -276,9 +345,11 @@ app
         throw new Error('请先停止游戏并等待所有任务完成');
     };
     const handlers: Omit<Api, 'onEvent' | 'droppedPaths'> = {
+      ...assistant.handlers,
       ...projectionHandlers({
         workshop: projectionWorkshop,
         assets: projectionAssets,
+        resources,
         store,
         window: () => window!,
         writable,
@@ -329,7 +400,28 @@ app
         window: () => window!,
       }),
       ...saveHandlers({ saves, tasks, writable, window: () => window!, changed }),
+      searchReden: ({ query, page }) => reden.search(query, page),
+      redenDetails: (key) => reden.details(key),
+      redenDelivery: (file) => reden.delivery(file),
+      openRedenDownload: (file) => shell.openExternal(redenDownload(file)),
+      openReden: (key) => shell.openExternal(redenPage(key)),
+      previewReden: (file) => reden.preview(file),
+      installReden: async ({ id, file }) => {
+        await writable(id);
+        return tasks.start(
+          '下载 RedenMC 投影',
+          id,
+          (ctx) => reden.install(id, file, ctx),
+          'download',
+        );
+      },
       ...resourceHandlers({
+        cards: new LocalResourceCards(store, resources, (bytes, width, height) => {
+          const image = nativeImage.createFromBuffer(bytes);
+          return image.isEmpty()
+            ? undefined
+            : image.resize({ width, height, quality: 'best' }).toDataURL();
+        }),
         window: () => window!,
         resources,
         terracotta,
@@ -353,12 +445,10 @@ app
         if (terracotta.active) throw new Error('请重启启动器后，在启动陶瓦前清理原数据');
         const retired = (await storage.info()).retired;
         if (!retired) throw new Error('没有待清理的原数据');
-        const r = await dialog.showMessageBox(window!, {
-          type: 'warning',
+        const r = await showSystemDialog(window!, {
           message: '清理迁移前的原数据？',
-          detail:
-            retired.path +
-            '\n\n删除已复制且未被修改的文件及旧应用日志。当前数据和外部游戏目录保留。',
+          detail: '清理已复制且未修改的文件和旧日志。',
+          paths: [retired.path],
           buttons: ['取消', '清理原数据'],
           defaultId: 0,
           cancelId: 0,
@@ -401,14 +491,25 @@ app
         assertIdle,
         changed,
         gameRunning: () => launcher.processes.size > 0,
+        folderScan: (active) => emit({ type: 'folder-scan', active }),
       }),
+      checkLauncherUpdate: () => launcherUpdates.check(),
+      openLauncherRelease: () => shell.openExternal(launcherUpdates.releaseUrl),
+      dismissNotification: async (ref) => {
+        if ('taskId' in ref) tasks.dismiss(ref.taskId);
+        else launcherUpdates.dismiss(ref.version);
+      },
       snapshot: async () => ({
         ...store.data,
+        assistantPending: assistant.tools
+          .changes()
+          .filter((p) => p.status === 'pending' && p.source === 'mcp').length,
         tasks: tasks.items,
         running: [...launcher.processes.keys()],
         dataPath: store.root,
         platform: process.platform,
         appVersion: app.getVersion(),
+        launcherUpdate: launcherUpdates.state,
         integrations: {
           curseforge: await vault.has('curseforge'),
           modrinth: await vault.has('modrinth'),
@@ -434,6 +535,10 @@ app
       },
       updateAppearance: async (value) => {
         appearance.update(value);
+        changed();
+      },
+      setSidebarOrder: async (order) => {
+        store.setSidebarOrder(order);
         changed();
       },
       setLightweight: async (active) => lightweight?.request(active),
@@ -529,8 +634,7 @@ app
         const i = store.instance(id);
         if (i.external) assertIdle(id);
         else await writable(id);
-        const result = await dialog.showMessageBox(window!, {
-          type: 'warning',
+        const result = await showSystemDialog(window!, {
           message: i.external ? `移除“${i.name}”的版本索引？` : `将“${i.name}”及其存档移入回收站？`,
           detail: i.external ? '游戏文件与存档保留。刷新游戏文件夹后可重新发现此版本。' : '',
           buttons: ['取消', i.external ? '移除索引' : '移入回收站'],
@@ -556,7 +660,12 @@ app
       },
       install: async (id) => {
         await writable(id);
-        return tasks.start('安装 ' + store.instance(id).name, id, (ctx) => mc.install(id, ctx));
+        return tasks.start(
+          '安装 ' + store.instance(id).name,
+          id,
+          (ctx) => mc.install(id, ctx),
+          'download',
+        );
       },
       launch: async (id) => {
         await writable(id);
@@ -621,6 +730,7 @@ app
           filters: [{ name: '日志', extensions: ['log'] }],
         });
         if (!file.filePath) return null;
+        await launcher.flushLogs(id);
         await exportCompleteLog(store, id, file.filePath, [
           ...auth.redactionValues(),
           ...(await privateValues(store.root)),
@@ -650,7 +760,7 @@ app
         return r.canceled ? null : r.filePaths[0];
       },
       installJava: async (major) =>
-        tasks.start('安装 Java ' + major, 'java', (ctx) => java.install(major, ctx)),
+        tasks.start('安装 Java ' + major, 'java', (ctx) => java.install(major, ctx), 'download'),
       mods: (id) => mods.list(id),
       importMods: async (id) => {
         await writable(id);
@@ -658,8 +768,10 @@ app
           properties: ['openFile', 'multiSelections'],
           filters: [{ name: 'Minecraft 模组', extensions: ['jar'] }],
         });
-        if (!r.canceled) await mods.import(id, r.filePaths);
-        changed();
+        if (!r.canceled && r.filePaths.length) {
+          await writable(id);
+          await tasks.run('导入模组', id, (ctx) => mods.import(id, r.filePaths, ctx));
+        }
       },
       toggleMod: async (v) => {
         await writable(v.id);
@@ -674,11 +786,16 @@ app
       searchMods: (v) => mods.search(v.id, v.query, v.offset),
       installMod: async (v) => {
         await writable(v.id);
-        return tasks.start('安装模组', v.id, (ctx) => mods.install(v.id, v.projectId, ctx));
+        return tasks.start(
+          '安装模组',
+          v.id,
+          (ctx) => mods.install(v.id, v.projectId, ctx),
+          'download',
+        );
       },
       updateMods: async (id) => {
         await writable(id);
-        return tasks.start('更新模组', id, (ctx) => mods.update(id, ctx));
+        return tasks.start('更新模组', id, (ctx) => mods.update(id, ctx), 'download');
       },
       importPack: async () => {
         const r = await dialog.showOpenDialog(window!, {
@@ -745,7 +862,14 @@ app
       },
     };
     let activeOperations = 0;
-    const lightMethods = new Set(['lightweightState', 'setLightweight', 'stop', 'window']);
+    const lightMethods = new Set([
+      'lightweightState',
+      'setLightweight',
+      'stop',
+      'window',
+      'dismissNotification',
+      'openLauncherRelease',
+    ]);
     const storageReadOnly = new Set([
       'seedMapInfo',
       'seedMapSeed',
@@ -759,6 +883,9 @@ app
       'seedMapRecoverState',
       'windowFullscreen',
       'snapshot',
+      'checkLauncherUpdate',
+      'openLauncherRelease',
+      'dismissNotification',
       'backgroundImage',
       'lightweightState',
       'setLightweight',
@@ -779,6 +906,8 @@ app
       if (typeof method !== 'string' || !Object.hasOwn(schemas, method))
         throw new Error('未知操作');
       const key = method as keyof typeof schemas;
+      if (quitting && !['snapshot', 'lightweightState', 'windowFullscreen', 'window'].includes(key))
+        throw new Error('启动器正在退出');
       if (host?.lightweight && !lightMethods.has(key)) throw new Error('请先打开完整界面');
       const parsed = schemas[key].parse(arg);
       if (
@@ -798,55 +927,78 @@ app
         throw new Error('正在清理缓存，请稍候');
       const tracked = !storageReadOnly.has(key);
       if (tracked) activeOperations++;
+      let operation: Promise<unknown> | undefined;
       try {
-        return await (handlers[key] as (v: any) => unknown)(parsed);
+        operation = Promise.resolve((handlers[key] as (v: any) => unknown)(parsed));
+        if (Object.hasOwn(assistant.handlers, key)) assistantOperations.add(operation);
+        return await operation;
       } finally {
+        if (operation) assistantOperations.delete(operation);
         if (tracked) activeOperations--;
       }
     });
     host = new WindowHost(
-      (closing, event) => {
-        if (launcher.processes.size || tasks.items.some((t) => t.status === 'running')) {
-          const result = dialog.showMessageBoxSync(closing, {
-            type: 'question',
-            message: '退出 KJMCL？正在运行的游戏将继续运行，下载任务会取消。',
-            buttons: ['取消', '退出'],
-            defaultId: 0,
-            cancelId: 0,
-          });
-          if (result === 0) event.preventDefault();
-          else {
-            auth.cancel();
-            tasks.cancelAll();
-          }
-        }
-        if (!event.defaultPrevented) {
-          lightweight?.dispose();
-          host?.dispose();
-        } else {
-          exitingTerracotta = false;
-          quitReady = false;
+      (_closing, event) => {
+        if (!quitReady) {
+          event.preventDefault();
+          void requestQuit();
         }
       },
       (current) => {
         window = current;
         current?.webContents.once('destroyed', () => seedMapEngine.cancelAll());
+        current?.on('restore', () => {
+          if (current === window && !quitting) void launcherUpdates.enter();
+        });
       },
     );
     lightweight = new LightweightMode(
       (active) => host!.open(active, true),
-      () => activeOperations === 0,
+      () => activeOperations === 0 && !quitPromptOpen && !quitting,
       changed,
       () => emit({ type: 'mode-error', message: '界面切换失败，已保留原界面，请重试' }),
     );
     await host.open();
+    // Older launchers have no assistant state. A broken sidecar must not prevent game launch.
+    activeOperations++;
+    const startMcp = assistant.mcp.startSaved().catch(() => {});
+    assistantOperations.add(startMcp);
+    void startMcp.finally(() => {
+      activeOperations--;
+      assistantOperations.delete(startMcp);
+    });
+    void launcherUpdates.enter();
+    app.on('second-instance', () => {
+      if (window?.isMinimized()) window.restore();
+      else void launcherUpdates.enter();
+      window?.show();
+      window?.focus();
+    });
+    const updateTimer = setInterval(() => void launcherUpdates.check(), 6 * 60 * 60 * 1000);
+    updateTimer.unref();
+    app.once('will-quit', () => clearInterval(updateTimer));
     app.on('activate', () => {
-      if (BrowserWindow.getAllWindows().length === 0)
+      if (BrowserWindow.getAllWindows().length === 0) {
         void host!.open(lightweight!.active).catch(() => {});
+      }
+      void launcherUpdates.enter();
     });
   })
-  .catch((e) => {
-    dialog.showErrorBox('KJMCL 启动失败', String(e));
-    app.exit(1);
+  .catch(async (error) => {
+    try {
+      await showSystemDialog(undefined, {
+        message: 'KJMCL 启动失败',
+        detail: String(error),
+        buttons: ['关闭'],
+        defaultId: 0,
+        cancelId: 0,
+      });
+    } catch {
+      dialog.showErrorBox('KJMCL 启动失败', String(error));
+    } finally {
+      app.exit(1);
+    }
   });
-app.on('window-all-closed', () => app.quit());
+app.on('window-all-closed', () => {
+  if (!uninstalling && window) app.quit();
+});

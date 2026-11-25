@@ -1,0 +1,27 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self'; object-src 'none'; base-uri 'none'"
+    />
+    <title>KJMCL</title>
+  </head>
+  <body>
+    <article role="alertdialog" aria-modal="true" aria-labelledby="message">
+      <header>
+        <img src="./build/icon.png?no-inline" width="32" height="32" alt="" draggable="false" />
+        <h1 id="message"></h1>
+        <button id="close" aria-label="关闭">×</button>
+      </header>
+      <section id="body" hidden>
+        <p id="detail" hidden></p>
+        <ul id="paths" hidden></ul>
+      </section>
+      <footer></footer>
+    </article>
+    <script type="module" src="/src/system-dialog.ts"></script>
+  </body>
+</html>

@@ -14,11 +14,16 @@ import type {
   WorldRegionRef,
   SavePatch,
   SavePruneReview,
+  SaveSelectionRequest,
+  RuleChange,
+  TerrainTile,
+  TerrainTileRequest,
 } from '../../shared/types';
 
 interface NativePlan {
   selected: number[];
-  files: { relative: string; before: string }[];
+  files: { relative: string; before: string; indices?: number[] }[];
+  guards: { relative: string; before: string | null }[];
   skipped: SavePruneReview['skipped'];
   reclaimedBytes: number;
   levelHash: string;
@@ -26,7 +31,11 @@ interface NativePlan {
 export class SaveManager {
   private verified?: Promise<string>;
   private active = 0;
-  private tickets = new Map<string, { request: WorldRef; plan: NativePlan; expires: number }>();
+  private waiting: (() => void)[] = [];
+  private tickets = new Map<
+    string,
+    { request: WorldRef & { dimension: string }; plan: NativePlan; expires: number }
+  >();
   constructor(
     private store: Store,
     private binaryDirectory: string,
@@ -65,8 +74,11 @@ export class SaveManager {
     args: Record<string, unknown> = {},
     signal?: AbortSignal,
   ): Promise<{ data: T; elapsedMs: number }> {
-    if (this.active >= 2) throw new Error('存档核心繁忙，请等待当前操作完成');
-    this.active++;
+    if (this.active < 2) this.active++;
+    else {
+      if (this.waiting.length >= 16) throw new Error('存档核心繁忙，请稍后再试');
+      await new Promise<void>((resolve) => this.waiting.push(resolve));
+    }
     try {
       signal?.throwIfAborted();
       const binary = await this.binary();
@@ -123,7 +135,9 @@ export class SaveManager {
         if (signal?.aborted) abort();
       });
     } finally {
-      this.active--;
+      const next = this.waiting.shift();
+      if (next) next();
+      else this.active--;
     }
   }
   async list(id: string) {
@@ -141,6 +155,15 @@ export class SaveManager {
   async scan(ref: WorldRef): Promise<SaveScan> {
     const r = await this.invoke<Omit<SaveScan, 'elapsedMs'>>(await this.world(ref), 'scan');
     return { ...r.data, elapsedMs: r.elapsedMs };
+  }
+  async terrainTiles({ id, world, dimension, side, regions }: TerrainTileRequest) {
+    return (
+      await this.invoke<TerrainTile[]>(await this.world({ id, world }), 'terrain-tiles', {
+        dimension,
+        side,
+        regions,
+      })
+    ).data;
   }
   async region(ref: WorldRegionRef): Promise<SaveRegionView> {
     const cache = path.join(this.store.root, 'cache', 'save-manager-v1');
@@ -166,19 +189,25 @@ export class SaveManager {
     return { ...result.data, elapsedMs: result.elapsedMs };
   }
   async plan(
-    ref: WorldRegionRef & {
-      indices: number[];
-      protectSpawn: number;
-      maxInhabitedTicks?: number;
-      beforeTimestamp?: number;
-    },
+    ref:
+      | SaveSelectionRequest
+      | (WorldRegionRef & {
+          indices: number[];
+          protectSpawn: number;
+          maxInhabitedTicks?: number;
+          beforeTimestamp?: number;
+        }),
   ): Promise<SavePruneReview> {
-    const { data: plan } = await this.invoke<NativePlan>(await this.world(ref), 'plan', { ...ref });
+    const { data: plan } = await this.invoke<NativePlan>(
+      await this.world(ref),
+      'groups' in ref ? 'plan-many' : 'plan',
+      { ...ref },
+    );
     const token = randomUUID();
     for (const [key, t] of this.tickets) if (t.expires < Date.now()) this.tickets.delete(key);
     if (this.tickets.size >= 20) this.tickets.delete(this.tickets.keys().next().value!);
     this.tickets.set(token, {
-      request: { id: ref.id, world: ref.world },
+      request: { id: ref.id, world: ref.world, dimension: ref.dimension },
       plan,
       expires: Date.now() + 10 * 60_000,
     });
@@ -207,6 +236,9 @@ export class SaveManager {
   }
   async edit(ref: WorldRef, patch: SavePatch) {
     await this.invoke(await this.world(ref), 'edit', { patch, transaction: randomUUID() });
+  }
+  async editRules(ref: WorldRef, changes: RuleChange[]) {
+    await this.invoke(await this.world(ref), 'rules', { changes, transaction: randomUUID() });
   }
   async undo(ref: WorldRef, transaction: string) {
     await this.invoke(await this.world(ref), 'undo', { transaction });

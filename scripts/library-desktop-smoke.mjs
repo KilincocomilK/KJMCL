@@ -75,12 +75,35 @@ try {
   page.on('pageerror', (e) => errors.push(e.message));
   await page.waitForSelector('h1');
   await page.getByRole('button', { name: '游戏实例', exact: true }).click();
+  const versions = page.getByRole('complementary', { name: '游戏版本' });
+  await versions.getByRole('button', { name: '生存测试', exact: true }).click();
+  await expect(page.getByRole('heading', { name: '生存测试' })).toBeVisible();
+  await expect
+    .poll(() => page.evaluate(async () => (await window.kjmcl.snapshot()).selectedInstanceId))
+    .toBe(other);
+  await versions.getByRole('button', { name: '建筑测试', exact: true }).click();
   await page.getByLabel('建筑测试 分组与备注').click();
   await page.getByLabel('分组名称').fill('建筑');
   await page.getByLabel('实例标签').fill('创作, 红石');
   await page.getByLabel('实例备注').fill('桌面验证备注');
   await page.getByRole('button', { name: '保存整理', exact: true }).click();
+  await page.getByLabel('建筑测试 分组与备注').click();
+  const group = page.getByRole('combobox', { name: '分组名称' });
+  await group.fill('建');
+  const suggestion = page.getByRole('option', { name: '建筑', exact: true });
+  await expect(suggestion).toHaveCSS('font-family', /Fusion Pixel/);
+  await group.press('ArrowDown');
+  await group.press('Enter');
+  await expect(group).toHaveValue('建筑');
+  await expect(group).toHaveAttribute('aria-expanded', 'false');
+  await group.click();
+  await expect(suggestion).toBeVisible();
+  await group.press('Escape');
+  await expect(group).toBeFocused();
+  await expect(suggestion).toHaveCount(0);
+  await page.getByRole('button', { name: '关闭', exact: true }).click();
   await page.getByLabel('收藏 建筑测试', { exact: true }).click();
+  await page.getByRole('button', { name: '筛选实例' }).click();
   await selectLauncherOption(page, '实例分组', '建筑');
   await page.getByLabel('切换实例视图').click();
   await expect(page.getByText('桌面验证备注', { exact: true })).toBeVisible();

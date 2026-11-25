@@ -49,6 +49,7 @@ import { SkinImportDialog } from '../skin/ImportDialog';
 import { api } from '../api';
 import { Select } from '../Select';
 import { Field, Modal } from '../components';
+import { ItemArt } from '../components/ItemArt';
 import type { Run } from '../ui';
 import '../skin/editor.css';
 
@@ -532,6 +533,7 @@ export function SkinEditorPage({
   return (
     <section className="skin-editor" hidden={!active} aria-label="皮肤编辑器">
       <div className="skin-document-bar">
+        <ItemArt name="brush" size={26} />
         <input
           aria-label="作品名称"
           maxLength={80}
@@ -709,7 +711,6 @@ export function SkinEditorPage({
           </div>
           <input
             aria-label="HEX 颜色"
-            className="skin-hex"
             value={hex}
             maxLength={9}
             onChange={(e) => {

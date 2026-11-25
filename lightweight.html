@@ -11,7 +11,7 @@
   </head>
   <body>
     <header>
-      <strong><span>K</span> KJMCL</strong>
+      <img src="./build/icon.png?no-inline" alt="KJMCL" width="32" height="32" draggable="false" />
       <div>
         <button id="minimize" aria-label="最小化">−</button
         ><button id="close" aria-label="关闭窗口">×</button>
@@ -24,8 +24,19 @@
       <button id="restore" class="primary">打开完整界面</button>
       <p class="muted">游戏退出后自动恢复</p>
     </main>
-    <aside id="notice" role="status" hidden>
-      <span></span><button aria-label="关闭提示">×</button>
+    <aside class="light-notifications" aria-label="活动通知">
+      <div id="notice" role="status" hidden>
+        <span></span><button aria-label="关闭提示">×</button>
+      </div>
+      <div id="activity" hidden>
+        <details>
+          <summary><strong></strong><small></small></summary>
+          <p></p>
+          <button id="release" hidden>查看新版本</button>
+        </details>
+        <button id="dismiss-activity" aria-label="关闭通知">×</button>
+        <progress max="100" aria-label="任务进度" hidden></progress>
+      </div>
     </aside>
     <script type="module" src="/src/lightweight.ts"></script>
   </body>

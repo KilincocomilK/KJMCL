@@ -20,6 +20,7 @@ import { inside, hashFile, exists } from './files';
 import { favoriteSchema } from '../../shared/schema';
 import { safeExport } from './safe-export';
 import { modListText } from './mod-list';
+import { catalogQuery } from '../../shared/search';
 const base = 'https://api.modrinth.com/v2';
 const classes: Record<ContentKind, number> = {
   mod: 6,
@@ -104,6 +105,16 @@ export class Catalog {
   }
   async search(v: Parameters<Api['catalogSearch']>[0]) {
     const i = this.store.instance(v.id);
+    const query = catalogQuery(
+      v.query,
+      v.kind === 'mod' ? [i.loader, i.version, 'mod'] : [i.version],
+    );
+    const page = await this.searchProvider({ ...v, query });
+    if (page.total === 0 && query !== v.query) return this.searchProvider(v);
+    return page;
+  }
+  private async searchProvider(v: Parameters<Api['catalogSearch']>[0]) {
+    const i = this.store.instance(v.id);
     if (v.source === 'modrinth') {
       const facets = [
         [`project_type:${v.kind}`],
@@ -124,7 +135,9 @@ export class Catalog {
       return {
         items: r.hits
           .slice(0, 20)
-          .map((p: any) => this.mrProject(p, { ...v, projectId: p.project_id })),
+          .map((p: any) =>
+            this.mrProject(p, { source: v.source, kind: v.kind, projectId: p.project_id }),
+          ),
         total: Number(r.total_hits),
       };
     }
@@ -135,16 +148,20 @@ export class Catalog {
       searchFilter: v.query,
       index: String(v.offset),
       pageSize: '20',
-      sortField: { relevance: '1', downloads: '6', updated: '3' }[v.sort],
-      sortOrder: 'desc',
     });
+    if (v.sort !== 'relevance') {
+      q.set('sortField', v.sort === 'downloads' ? '6' : '3');
+      q.set('sortOrder', 'desc');
+    }
     if (v.kind === 'mod' && cfLoaders[i.loader])
       q.set('modLoaderType', String(cfLoaders[i.loader]));
     const r = await this.cf.api<any>('mods/search?' + q);
     return {
       items: r.data
         .slice(0, 20)
-        .map((p: any) => this.cfProject(p, { ...v, projectId: String(p.id) })),
+        .map((p: any) =>
+          this.cfProject(p, { source: v.source, kind: v.kind, projectId: String(p.id) }),
+        ),
       total: Number(r.pagination.totalCount),
     };
   }
@@ -252,6 +269,7 @@ export class Catalog {
   }
   async install(v: ContentRef & { id: string; versionId: string }, ctx: Work) {
     const project = await this.project(v);
+    ctx.setTitle?.((v.kind === 'modpack' ? '下载 ' : '安装 ') + project.title);
     let file: { filename: string; url: string; size: number; hash: string; algorithm: string };
     if (v.source === 'modrinth') {
       const version = await this.net.json<MRVersion>(
@@ -314,6 +332,7 @@ export class Catalog {
         hash: file.hash,
         algorithm: file.algorithm,
         size: file.size,
+        onProgress: (fraction) => ctx.progress(5 + 90 * fraction, `下载 ${project.title}`),
       });
       ctx.signal.throwIfAborted();
       if (v.kind === 'modpack') {

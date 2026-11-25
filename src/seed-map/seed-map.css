@@ -132,7 +132,7 @@
   padding: 0 10px;
   background: #15191c;
   color: #adb1b7;
-  font: 10px monospace;
+  font: 12px var(--pixel);
   white-space: nowrap;
   overflow: hidden;
 }
@@ -169,12 +169,12 @@
   margin-bottom: 9px;
 }
 .seed-panel summary small {
-  font-size: 10px;
+  font-size: 12px;
   color: #888;
   float: right;
 }
 .seed-panel .check {
-  font-size: 11px;
+  font-size: 12px;
   display: flex;
   align-items: center;
   gap: 5px;
@@ -193,7 +193,7 @@
 }
 .seed-layer-toggles small {
   color: #a5a5a5;
-  font-size: 10px;
+  font-size: 12px;
 }
 .seed-jump {
   display: grid;
@@ -237,7 +237,7 @@
 }
 .seed-result-list small {
   color: #a7a9ac;
-  font-size: 10px;
+  font-size: 12px;
 }
 .seed-biomes {
   display: grid;
@@ -284,7 +284,7 @@
 }
 .seed-marker-list small {
   display: block;
-  font-size: 9px;
+  font-size: 12px;
   color: #91979c;
 }
 .seed-point-card {
@@ -305,12 +305,12 @@
   font-size: 13px;
 }
 .seed-point-card > span {
-  font: 12px monospace;
+  font: 12px var(--pixel);
   color: #ddd;
 }
 .seed-point-card small {
   color: #a6a6a6;
-  font-size: 11px;
+  font-size: 12px;
   overflow-wrap: anywhere;
 }
 .seed-point-card > div {
@@ -319,7 +319,7 @@
   gap: 4px;
 }
 .seed-point-card button {
-  font-size: 11px;
+  font-size: 12px;
 }
 .seed-point-card .seed-card-close {
   position: absolute;
@@ -405,7 +405,7 @@
 }
 .seed-library small {
   color: #92979c;
-  font-size: 11px;
+  font-size: 12px;
   overflow-wrap: anywhere;
 }
 .seed-page.is-fullscreen {

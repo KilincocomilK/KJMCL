@@ -1,4 +1,4 @@
-import { ArrowRight, Download, Layers, Play, Plus, SlidersHorizontal, Square } from 'lucide-react';
+import { Download, Layers, Play, Plus, SlidersHorizontal, Square } from 'lucide-react';
 import type { Instance, Snapshot } from '../../shared/types';
 import { api } from '../api';
 import { Select } from '../Select';
@@ -38,7 +38,8 @@ export function HomePage({
   return (
     <section className="home-stage" aria-label="游戏启动">
       <div className="home-launch">
-        {active ? (
+        <h2 className="home-name">Minecraft</h2>
+        {active && (
           <>
             <div className="home-version">
               <span>{active.version}</span>
@@ -67,8 +68,6 @@ export function HomePage({
               </button>
             </div>
           </>
-        ) : (
-          <h2 className="home-name">Minecraft</h2>
         )}
         <div className="home-launch-actions">
           <button
@@ -79,7 +78,9 @@ export function HomePage({
           >
             {running ? (
               <Square size={18} />
-            ) : active && active.status !== 'ready' ? (
+            ) : !active ? (
+              <Plus size={20} />
+            ) : active.status !== 'ready' ? (
               <Download size={19} />
             ) : (
               <Play size={18} fill="currentColor" />
@@ -99,27 +100,26 @@ export function HomePage({
                       : active.external
                         ? '刷新版本索引'
                         : '安装游戏'}
-            <ArrowRight size={18} />
           </button>
           {running && (
             <button className="text-button" onClick={() => void run(() => api.stop(active!.id))}>
               结束游戏
             </button>
           )}
-        </div>
-      </div>
-      <div className="home-tools">
-        <button className="text-button" onClick={onLibrary}>
-          <Layers size={16} />
-          管理实例
-          <ArrowRight size={14} />
-        </button>
-        {state.instances.length > 0 && (
-          <button className="text-button" onClick={onCreate}>
-            <Plus size={17} />
-            新建实例
+          <button className="home-secondary" onClick={onLibrary}>
+            <Layers size={16} /> 管理实例
           </button>
-        )}
+          {state.instances.length > 0 && (
+            <button
+              className="icon home-secondary"
+              onClick={onCreate}
+              aria-label="新建实例"
+              title="新建实例"
+            >
+              <Plus size={17} />
+            </button>
+          )}
+        </div>
       </div>
     </section>
   );

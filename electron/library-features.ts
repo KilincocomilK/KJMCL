@@ -33,6 +33,7 @@ export function libraryHandlers(c: {
         v.kind === 'modpack' ? '下载并创建整合包实例' : '安装内容',
         v.id,
         (ctx) => c.catalog.install(v, ctx),
+        'download',
       );
     },
     saveFavorite: async (v) => {

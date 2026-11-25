@@ -19,10 +19,23 @@ await writeFile(
 const {app,dialog}=require('electron');
 const fs=require('node:fs');
 process.argv.push('--kjmcl-uninstall-data');
-dialog.showMessageBox=async options=>{
- fs.writeFileSync(process.env.KJMCL_TEST_REPORT,JSON.stringify({options,profile:app.getPath('userData')}));
- return {response:Number(process.env.KJMCL_TEST_CHOICE)};
-};
+app.on('browser-window-created', (_event, win) => {
+ win.once('show', async () => {
+   const collect = () => ({
+     title: document.querySelector('h1').textContent,
+     focus: document.activeElement.textContent,
+     buttons: [...document.querySelectorAll('footer button')].map(b => b.textContent),
+     paths: [...document.querySelectorAll('#paths li')].map(li => li.textContent),
+     launcherApi: typeof window.kjmcl
+   });
+   const content = await win.webContents.executeJavaScript('(' + collect.toString() + ')()');
+   fs.writeFileSync(process.env.KJMCL_TEST_REPORT,JSON.stringify({content,profile:app.getPath('userData')}));
+   const label = ['保留数据并卸载','删除数据并卸载','关闭'][Number(process.env.KJMCL_TEST_CHOICE)];
+   await win.webContents.executeJavaScript(
+     '[...document.querySelectorAll("button")].find(b => (b.ariaLabel || b.textContent) === ' + JSON.stringify(label) + ').click()'
+   ).catch(() => {});
+ });
+});
 dialog.showErrorBox=(title,content)=>{fs.writeFileSync(process.env.KJMCL_TEST_REPORT,JSON.stringify({title,content}));app.exit(99);};
 require(process.env.KJMCL_TEST_ENTRY);
 `,
@@ -74,10 +87,11 @@ try {
     }
     const result = JSON.parse(await readFile(report, 'utf8'));
     assert.equal(code, choice === 2 ? 2 : 0, JSON.stringify(result));
-    assert.equal(result.options.defaultId, 0);
-    assert.equal(result.options.cancelId, 2);
-    assert.equal(result.options.buttons.length, 3);
-    assert.ok(result.options.detail.includes(control));
+    assert.equal(result.content.title, '卸载时保留游戏数据？');
+    assert.equal(result.content.focus, '保留数据并卸载');
+    assert.equal(result.content.launcherApi, 'undefined');
+    assert.deepEqual(result.content.buttons.sort(), ['取消卸载', '保留数据并卸载', '删除数据并卸载'].sort());
+    assert.ok(result.content.paths.includes(control));
     assert.notEqual(result.profile, control);
     assert.equal(
       await access(path.join(control, 'assets/probe')).then(

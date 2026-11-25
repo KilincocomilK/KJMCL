@@ -49,7 +49,7 @@
   font-weight: 500;
 }
 .resource-section-head h2 span {
-  font: 11px monospace;
+  font: 12px var(--pixel);
   color: #85847d;
   margin-left: 8px;
 }
@@ -79,10 +79,19 @@
   font-size: 12px;
 }
 .resource-menu summary {
+  display: flex;
+  align-items: center;
+  min-height: 32px;
   list-style: none;
   cursor: pointer;
   border: 1px solid var(--line);
-  padding: 8px 12px;
+  padding: 4px 12px;
+}
+.resource-actions > button.icon {
+  background: var(--stone);
+  border-color: #51554b;
+  box-shadow: var(--edge);
+  color: var(--paper);
 }
 .resource-menu summary::-webkit-details-marker {
   display: none;
@@ -181,4 +190,135 @@
     gap: 10px;
     padding: 15px;
   }
+}
+.reden-plan {
+  display: grid;
+  place-items: center;
+  height: clamp(210px, 42vh, 420px);
+  margin-top: 10px;
+  padding: 12px;
+  background: repeating-conic-gradient(#242923 0% 25%, #20251f 0% 50%) 0 0/16px 16px;
+  border: 2px solid var(--ink);
+}
+.reden-plan canvas {
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+  object-fit: contain;
+  image-rendering: pixelated;
+}
+.reden-viewport .projection-viewport {
+  position: relative;
+  height: min(52vh, 460px);
+  min-height: 220px;
+}
+
+.unified-resources .pane-content {
+  display: flex;
+  flex-direction: column;
+}
+.unified-resources .resource-context {
+  flex: none;
+  align-items: center;
+  border-bottom: 1px solid var(--line);
+  padding-bottom: 16px;
+}
+.resource-context > .row {
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.app-shell:has(.activity-stack :is(.activity-card, .toast)) .resource-context {
+  padding-right: max(0px, calc(var(--activity-width) + 16px - var(--page-pad)));
+}
+.resource-context h2 {
+  margin-right: auto;
+}
+.unified-resources #resource-panel {
+  flex: 1;
+  min-width: 0;
+}
+#resource-panel > .empty:only-child {
+  height: 100%;
+}
+.resource-tabs .rail-option {
+  min-height: 48px;
+}
+.resource-instance-picker {
+  display: grid;
+  gap: 8px;
+  flex: none;
+  padding: 0 2px 16px;
+  border-bottom: 1px solid var(--line);
+}
+.resource-instance-picker > span {
+  color: var(--orange);
+  font-size: 14px;
+}
+.resource-instance-picker .launcher-select-trigger {
+  min-height: 44px;
+  font-size: 16px;
+  gap: 8px;
+  padding-inline: 10px;
+}
+.resource-instance-picker .launcher-select-trigger > span {
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+.local-resource-art {
+  display: grid;
+  place-items: center;
+  flex: none;
+  width: 44px;
+  height: 44px;
+  overflow: hidden;
+  background: #73855313;
+}
+.local-resource-search {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(100px, 130px);
+  gap: 10px;
+  margin-bottom: 16px;
+}
+.local-resource-search .resource-search {
+  margin: 0;
+  min-width: 0;
+}
+.local-resource-art img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  image-rendering: pixelated;
+}
+.rail-option .local-resource-art {
+  width: 36px;
+  height: 36px;
+}
+.local-mod-version {
+  color: var(--paper);
+  font-weight: normal;
+}
+.resource-mod-row small .mod-filename {
+  padding: 0;
+  overflow-wrap: anywhere;
+}
+.resource-row .grow {
+  min-width: 0;
+}
+.rail-option .rail-count {
+  font: 14px var(--pixel);
+  margin-top: 0;
+}
+.resource-instance .instance-select,
+.rail-footer .instance-select {
+  width: 100%;
+  max-width: 100%;
+}
+#resource-panel {
+  animation: panel-in 160ms var(--out);
+}
+.resource-menu-items {
+  z-index: 10;
 }

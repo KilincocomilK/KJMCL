@@ -91,6 +91,7 @@ export function MapCanvas(props: Props) {
     context.fillStyle = '#121719';
     context.fillRect(0, 0, s.width, s.height);
     context.imageSmoothingEnabled = false;
+    context.font = `12px ${getComputedStyle(node).fontFamily}`;
     const world = viewBounds(p.view, s);
     for (const tile of cache.current.values().sort((a, b) => b.step - a.step)) {
       const span = tile.step * tile.size;
@@ -167,7 +168,6 @@ export function MapCanvas(props: Props) {
       const cell = `${Math.floor(position.x / 90)}:${Math.floor(position.y / 24)}`;
       if (p.labels && (!occupied.has(cell) || selected)) {
         occupied.add(cell);
-        context.font = '11px "Microsoft YaHei",sans-serif';
         context.lineWidth = 3;
         context.strokeStyle = '#080a0b';
         context.strokeText(pin.name, position.x + 9, position.y + 4);
@@ -184,10 +184,8 @@ export function MapCanvas(props: Props) {
     context.moveTo(23, s.height - 19);
     context.lineTo(23 + ruler.pixels, s.height - 19);
     context.stroke();
-    context.font = '10px monospace';
     context.fillStyle = '#fff';
     context.fillText(`${ruler.blocks.toLocaleString()} 格`, 23, s.height - 27);
-    context.font = '12px sans-serif';
     context.fillStyle = '#ffffffcc';
     context.fillText('北 ↑', s.width - 42, 24);
   };
@@ -200,6 +198,9 @@ export function MapCanvas(props: Props) {
   };
   useEffect(() => {
     const element = host.current!;
+    void document.fonts.ready.then(() => {
+      if (element.isConnected) draw();
+    });
     const observer = new ResizeObserver(() => {
       const rect = element.getBoundingClientRect();
       setSize({ width: rect.width, height: rect.height });

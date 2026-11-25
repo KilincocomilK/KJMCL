@@ -1,0 +1,67 @@
+@font-face {
+  font-family: 'Fusion Pixel';
+  src: url('./assets/fusion-pixel-12px-zh-hans.woff2') format('woff2');
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+}
+
+:root {
+  --pixel: 'Fusion Pixel', 'Microsoft YaHei', system-ui, sans-serif;
+  font-family: var(--pixel);
+  font-synthesis: none;
+  --ink: #111312;
+  --rail: #242624;
+  --stone: #30332f;
+  --paper: #f4f0e6;
+  --muted: #b3b4a9;
+  --line: #41433b;
+  --orange: #ffa153;
+  --edge: inset 0 1px #ffffff18, inset 0 -2px #0004;
+  --field-surface: #20231e;
+  --field-border: #10120f #626758 #626758 #10120f;
+  --field-inset: inset 2px 2px #0c0e0b, inset -1px -1px #393e33;
+  --out: cubic-bezier(0.18, 0.81, 0.25, 1);
+  --press: cubic-bezier(0.2, 0.85, 0.32, 1.18);
+}
+button,
+input,
+select,
+option,
+optgroup,
+textarea,
+code,
+pre,
+kbd,
+samp {
+  font-family: inherit;
+}
+@keyframes panel-in {
+  from {
+    opacity: 0;
+    translate: 0 6px;
+  }
+  to {
+    opacity: 1;
+    translate: 0 0;
+  }
+}
+@keyframes menu-in {
+  from {
+    opacity: 0;
+    transform: scale(0.98) translateY(-3px);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1) translateY(0);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation: none !important;
+    transition: none !important;
+    scroll-behavior: auto !important;
+  }
+}

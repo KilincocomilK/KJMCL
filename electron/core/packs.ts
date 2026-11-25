@@ -1,11 +1,12 @@
 import path from 'node:path';
+import { randomUUID } from 'node:crypto';
 import AdmZip from 'adm-zip';
-import { mkdir, writeFile, readdir, stat } from 'node:fs/promises';
+import { mkdir, readFile, writeFile, readdir, stat } from 'node:fs/promises';
 import { Store } from './store';
 import { Minecraft } from './minecraft';
 import { Network, pool } from './network';
 import { inside } from './files';
-import { Tasks } from './tasks';
+import { fileProgress, progressRange, Tasks, type Work } from './tasks';
 import { z } from 'zod';
 import type { Loader } from '../../shared/types';
 import type { CurseForge } from './curseforge';
@@ -50,9 +51,18 @@ export class Packs {
     }) => string,
     private cf?: CurseForge,
   ) {}
-  async import(file: string) {
+  import(file: string): Promise<string> {
+    // Return the instance ID as soon as its manifest is accepted and its directory is locked.
+    return new Promise((accept, reject) => {
+      this.tasks
+        .run('导入整合包', randomUUID(), (ctx) => this.importFile(file, ctx, accept))
+        .catch(reject);
+    });
+  }
+  private async importFile(file: string, ctx: Work, accept: (id: string) => void) {
+    ctx.progress(0, '读取整合包');
     if ((await stat(file)).size > 2 * 1024 ** 3) throw new Error('整合包超过 2 GiB');
-    const zip = new AdmZip(file);
+    const zip = new AdmZip(await readFile(file, { signal: ctx.signal }));
     const entries = zip.getEntries();
     let total = 0;
     for (const e of entries) {
@@ -119,51 +129,82 @@ export class Packs {
             loaderVersion: cfLoader?.slice(cfLoader.indexOf('-') + 1),
           })
         : own.parse(JSON.parse(custom!.getData().toString()));
+    ctx.signal.throwIfAborted();
     const id = this.create(data);
-    this.tasks.start('导入 ' + data.name, id, async (ctx) => {
+    ctx.setTitle?.('导入 ' + data.name);
+    await this.tasks.exclusive(id, async () => {
+      accept(id);
       try {
-        await this.mc.install(id, ctx);
+        const required = cf?.files.filter((f) => f.required) ?? [];
+        const downloads = mr?.files.filter((f) => f.env?.client !== 'unsupported') ?? [];
+        const overrides = entries.flatMap((entry) => {
+          const prefix =
+            mr && entry.entryName.startsWith('client-overrides/')
+              ? 'client-overrides/'
+              : (cf?.overrides ?? 'overrides').replace(/\/$/, '') + '/';
+          if (entry.isDirectory || !entry.entryName.startsWith(prefix)) return [];
+          const relative = entry.entryName.slice(prefix.length);
+          return /^(mods|resourcepacks|shaderpacks|config|saves)\//.test(relative) ||
+            ['options.txt', 'servers.dat'].includes(relative)
+            ? [{ entry, relative }]
+            : [];
+        });
+        const filesEnd = overrides.length ? 85 : 99;
+        const gameEnd = downloads.length || required.length ? 55 : filesEnd;
+        await this.mc.install(id, progressRange(ctx, 2, gameEnd), 'installing');
         const root = this.store.dir(id);
         if (cf) {
           const pins = new Map(cf.files.map((f) => [f.projectID, f.fileID]));
-          for (const file of cf.files.filter((f) => f.required))
-            await this.cf!.install(id, file.projectID, ctx, file.fileID, pins);
+          const step = (filesEnd - gameEnd) / Math.max(1, required.length);
+          for (const [index, file] of required.entries()) {
+            const part = progressRange(ctx, gameEnd + index * step, gameEnd + (index + 1) * step);
+            await this.cf!.install(id, file.projectID, part, file.fileID, pins);
+            part.progress(100, '导入整合包模组');
+          }
         }
-        if (mr)
+        if (downloads.length) {
+          const report = fileProgress(
+            ctx,
+            downloads.map((file) => file.fileSize),
+            gameEnd,
+            filesEnd,
+          );
           await pool(
-            mr.files.filter((f) => f.env?.client !== 'unsupported'),
+            downloads,
             this.store.data.settings.concurrency,
-            async (f) => {
+            async (f, index) => {
               if (!/^(mods|resourcepacks|shaderpacks|config)\//.test(f.path))
                 throw new Error('整合包包含不支持的文件位置');
               await this.net.download(f.downloads[0], inside(root, f.path), {
                 signal: ctx.signal,
                 hash: f.hashes.sha1,
                 size: f.fileSize,
+                onProgress: (fraction) => report(index, fraction, f.path),
               });
             },
             ctx.signal,
           );
-        for (const entry of entries) {
+        }
+        const reportOverride = fileProgress(
+          ctx,
+          overrides.map(({ entry }) => entry.header.size),
+          filesEnd,
+          99,
+        );
+        for (const [index, { entry, relative }] of overrides.entries()) {
           ctx.signal.throwIfAborted();
-          const prefix = mr
-            ? entry.entryName.startsWith('client-overrides/')
-              ? 'client-overrides/'
-              : 'overrides/'
-            : cf
-              ? cf.overrides.replace(/\/$/, '') + '/'
-              : 'overrides/';
-          if (!entry.entryName.startsWith(prefix) || entry.isDirectory) continue;
-          const relative = entry.entryName.slice(prefix.length);
-          if (
-            !/^(mods|resourcepacks|shaderpacks|config|saves)\//.test(relative) &&
-            !['options.txt', 'servers.dat'].includes(relative)
-          )
-            continue;
           const target = inside(root, relative);
           await mkdir(path.dirname(target), { recursive: true });
-          await writeFile(target, entry.getData());
+          const contents = await new Promise<Buffer>((resolve, reject) => {
+            entry.getDataAsync((data, error) =>
+              error ? reject(new Error(String(error))) : resolve(data),
+            );
+          });
+          ctx.signal.throwIfAborted();
+          await writeFile(target, contents);
+          reportOverride(index, 1, relative);
         }
+        ctx.signal.throwIfAborted();
         this.store.instance(id).status = 'ready';
         this.store.save();
       } catch (e) {
@@ -173,7 +214,6 @@ export class Packs {
         throw e;
       }
     });
-    return id;
   }
   async export(id: string, file: string) {
     const i = this.store.instance(id),

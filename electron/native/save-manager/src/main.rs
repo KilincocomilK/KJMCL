@@ -1,5 +1,6 @@
 mod nbt;
 mod region;
+mod rules;
 mod safety;
 #[cfg(test)]
 mod tests;
@@ -23,7 +24,10 @@ fn run(v: Value) -> Result<Value> {
         "list" => world::list(&root),
         "metadata" => world::metadata(&root),
         "scan" => world::scan(&root),
+        "terrain-tiles" => region::terrain_tiles(&root, &v),
         "region" => region::inspect(&root, &v),
+        "rules" => safety::edit_rules(&root, &v),
+        "plan-many" => safety::plan_many(&root, &v),
         "plan" => safety::plan(&root, &v),
         "apply" => safety::apply(&root, &v),
         "edit" => safety::edit(&root, &v),

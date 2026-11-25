@@ -1,18 +1,7 @@
 import { spawn } from 'node:child_process';
 import { createServer } from 'vite';
-import { build } from 'esbuild';
 import electron from 'electron';
-import './build-native.mjs';
-await build({
-  entryPoints: ['electron/main.ts', 'electron/preload.ts'],
-  bundle: true,
-  platform: 'node',
-  format: 'cjs',
-  outdir: 'dist-electron',
-  outExtension: { '.js': '.cjs' },
-  external: ['electron'],
-  sourcemap: true,
-});
+import './build-electron.mjs';
 const server = await createServer();
 await server.listen();
 const env = { ...process.env, KJMCL_DEV_URL: 'http://127.0.0.1:5173' };

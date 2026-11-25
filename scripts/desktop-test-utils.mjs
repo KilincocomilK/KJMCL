@@ -51,3 +51,29 @@ export async function selectLauncherOption(page, name, value) {
   await options.nth(index).click();
   await expect(trigger).toHaveAttribute('aria-expanded', 'false');
 }
+
+export async function answerSystemDialog(app, action, answer) {
+  const dialog = app.waitForEvent('window').then(async (page) => {
+    await expect(page.getByRole('alertdialog')).toBeVisible();
+    await expect(page.locator('footer .primary')).toBeFocused();
+    expect(await page.evaluate(() => typeof window.kjmcl)).toBe('undefined');
+    await answer(page);
+  });
+  const [, result] = await Promise.all([dialog, action()]);
+  return result;
+}
+
+export async function closeFixtureApp(app) {
+  const timer = setTimeout(() => app.process().kill(), 8000);
+  app.on('window', (page) => {
+    void page
+      .getByRole('button', { name: '退出启动器', exact: true })
+      .click({ timeout: 4000 })
+      .catch(() => {});
+  });
+  try {
+    await app.close();
+  } finally {
+    clearTimeout(timer);
+  }
+}

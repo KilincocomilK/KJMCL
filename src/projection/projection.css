@@ -31,10 +31,10 @@
 .projection-summary small,
 .projection-page small {
   color: #929b9e;
-  font-size: 11px;
+  font-size: 12px;
 }
 .projection-page button,
-.projection-page input,
+.projection-page input:not([type='checkbox']):not([type='range']),
 .projection-page .launcher-select-trigger {
   font-size: 12px;
   min-height: 31px;
@@ -102,7 +102,7 @@
   background: #161b20e8;
   border: 1px solid #ffffff21;
   width: 92px;
-  font-size: 11px;
+  font-size: 12px;
 }
 .projection-layer-control > strong {
   color: #f69b66;
@@ -115,13 +115,13 @@
   width: 100%;
   min-width: 0;
   padding: 4px;
-  font: 12px monospace;
+  font: 12px var(--pixel);
 }
 .projection-layer-control input[type='range'] {
   min-height: 16px;
 }
 .projection-layer-control button {
-  font-size: 11px;
+  font-size: 12px;
   padding: 4px;
   min-height: 26px;
 }
@@ -136,7 +136,7 @@
   justify-content: space-between;
   align-items: center;
   gap: 10px;
-  font: 11px monospace;
+  font: 12px var(--pixel);
   color: #aeb8bf;
   background: #151b20;
 }
@@ -153,7 +153,7 @@
   padding: 9px 13px;
   background: #171b20e8;
   border: 1px solid #f26b2160;
-  font: 12px monospace;
+  font: 12px var(--pixel);
   max-width: calc(100% - 220px);
 }
 .projection-selection-box {
@@ -201,7 +201,7 @@
   overflow: hidden;
 }
 .projection-selected-info code {
-  font-size: 10px;
+  font-size: 12px;
   color: #9da6ae;
   white-space: nowrap;
   overflow: hidden;
@@ -222,7 +222,7 @@
   align-items: center;
   gap: 3px;
   margin: 8px 0;
-  font-size: 11px;
+  font-size: 12px;
 }
 .projection-coordinates input {
   padding: 5px 2px !important;
@@ -255,7 +255,7 @@
   white-space: nowrap;
 }
 .projection-format-notes p {
-  font-size: 11px;
+  font-size: 12px;
   color: #b5aaa0;
   line-height: 1.6;
 }
@@ -318,10 +318,12 @@
   gap: 10px;
   word-break: break-word;
 }
+.projection-library {
+  gap: 8px;
+}
 .projection-library-item {
   display: flex;
   gap: 8px;
-  margin: 8px 0;
 }
 .projection-library-item > button:first-child {
   flex: 1;

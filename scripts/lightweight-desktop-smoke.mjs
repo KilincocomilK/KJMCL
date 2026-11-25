@@ -1,4 +1,4 @@
-import { firstVisibleWindow, navigateWorkspace } from './desktop-test-utils.mjs';
+import { answerSystemDialog, closeFixtureApp, firstVisibleWindow, navigateWorkspace } from './desktop-test-utils.mjs';
 import { _electron as electron, expect } from '@playwright/test';
 import { mkdtemp, mkdir, writeFile, readFile, rm } from 'node:fs/promises';
 import os from 'node:os';
@@ -127,6 +127,13 @@ public class LightSmoke {
   // Real spawned JVM -> automatic replacement, with no confirmation dialog.
   page = await swap(page, () => page.evaluate((id) => window.kjmcl.launch(id), ids[0]), true);
   await expect(page.getByRole('heading', { name: '轻量模式' })).toBeVisible();
+  await expect(page.locator('body')).toHaveCSS('font-family', /Fusion Pixel/);
+  await expect(page.getByRole('button', { name: '打开完整界面' })).toHaveCSS(
+    'font-family',
+    /Fusion Pixel/,
+  );
+  await expect(page.getByRole('img', { name: 'KJMCL' })).toHaveJSProperty('naturalWidth', 512);
+  await expect(page.locator('header')).not.toContainText('KJMCL');
   await expect(page.getByRole('status')).toContainText('已进入轻量模式');
   expect(
     (await page.evaluate(() => window.kjmcl.lightweightState())).games.map((g) => g.id),
@@ -189,20 +196,15 @@ public class LightSmoke {
     .poll(() => page.evaluate(async () => (await window.kjmcl.lightweightState()).games.length))
     .toBe(1);
   expect(page.url()).toContain('lightweight.html');
-  // A cancelled native quit must leave automatic recovery active.
-  await app.evaluate(({ app, dialog }) => {
-    globalThis.quitQuestions = 0;
-    globalThis.savedQuitDialog = dialog.showMessageBoxSync;
-    dialog.showMessageBoxSync = () => {
-      globalThis.quitQuestions++;
-      return 0;
-    };
-    app.quit();
+  await answerSystemDialog(app, () => app.evaluate(({ app }) => app.quit()), async (dialog) => {
+    await expect(dialog.getByText('已启动的游戏会继续运行。')).toBeVisible();
+    const closed = dialog.waitForEvent('close');
+    await dialog.keyboard.down('Escape').catch((error) => {
+      if (!dialog.isClosed()) throw error;
+    });
+    await closed;
   });
-  await expect.poll(() => app.evaluate(() => globalThis.quitQuestions)).toBeGreaterThan(0);
-  await app.evaluate(({ dialog }) => {
-    dialog.showMessageBoxSync = globalThis.savedQuitDialog;
-  });
+  await page.keyboard.up('Escape');
   page = await swap(
     page,
     () => writeFile(path.join(state.instances[1].gameDir, 'finish.fixture'), ''),
@@ -307,15 +309,7 @@ public class LightSmoke {
     )
       await writeFile(path.join(instance.gameDir, 'finish.fixture'), '').catch(() => {});
   }
-  if (app) {
-    // A failed assertion must not strand a test-only native quit confirmation.
-    await app
-      .evaluate(({ dialog }) => {
-        dialog.showMessageBoxSync = () => 1;
-      })
-      .catch(() => {});
-    await app.close();
-  }
+  if (app) await closeFixtureApp(app);
   if (path.basename(root).startsWith('kjmcl-lightweight-desktop-'))
     await rm(root, { recursive: true, force: true, maxRetries: 10, retryDelay: 300 });
 }

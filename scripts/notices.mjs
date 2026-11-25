@@ -9,6 +9,9 @@ const sections = [
 sections.push(
   '\nTerracotta / 陶瓦联机 © Burning_TNT and contributors\nOptional, unmodified external component downloaded on demand; not linked into KJMCL.\nSource and license: https://github.com/burningtnt/Terracotta/tree/v0.4.2\nHTTP integration: https://burningtnt.github.io/Terracotta/http-api/\nLicense: GNU Affero General Public License v3.0 or later, with upstream exceptions for unmodified binary distribution or IPC integration with prominent attribution.\nBuilt on EasyTier; bundled dependencies retain their upstream licenses.\n',
 );
+sections.push(
+  '\nFusion Pixel Font 12px proportional zh-hans (2026.11.10)\nSource: https://github.com/TakWolf/fusion-pixel-font\nKJMCL Wizard Pixel is a subset for the Windows installation wizard.\nSIL Open Font License 1.1 and upstream licenses are included in dist/licenses/fusion-pixel/.\n',
+);
 async function visit(name) {
   if (seen.has(name)) return;
   seen.add(name);

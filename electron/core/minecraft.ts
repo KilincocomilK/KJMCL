@@ -6,7 +6,7 @@ import { Network, pool } from './network';
 import { Store } from './store';
 import { atomicJson, json, inside, extractZip, hashFile } from './files';
 import { assertExternal, checkGamePath, resolveExternalVersion } from './game-folders';
-import type { Work } from './tasks';
+import { fileProgress, type Work } from './tasks';
 import type { Loader, VersionSummary } from '../../shared/types';
 export interface Rule {
   action: 'allow' | 'disallow';
@@ -96,27 +96,26 @@ export function mergeVersions(parent: Version, child: Version): Version {
     },
   };
 }
+export function selectArguments(
+  args: Argument[],
+  features?: Record<string, boolean>,
+) {
+  return args.flatMap((a) => {
+    if (typeof a === 'string') return [a];
+    return allowed(a.rules, undefined, undefined, features) ? a.value : [];
+  });
+}
 export function expandArguments(
   args: Argument[],
   variables: Record<string, string>,
-  features: Record<string, boolean> = { has_custom_resolution: true },
+  features?: Record<string, boolean>,
 ) {
-  return args
-    .flatMap((a) =>
-      typeof a === 'string'
-        ? [a]
-        : allowed(a.rules, undefined, undefined, features)
-          ? Array.isArray(a.value)
-            ? a.value
-            : [a.value]
-          : [],
-    )
-    .map((a) =>
-      a.replace(/\$\{([^}]+)\}/g, (_, k) => {
-        if (!(k in variables)) throw new Error(`缺少启动参数：${k}`);
-        return variables[k];
-      }),
-    );
+  return selectArguments(args, features).map((a) =>
+    a.replace(/\$\{([^}]+)\}/g, (_, k) => {
+      if (!(k in variables)) throw new Error(`缺少启动参数：${k}`);
+      return variables[k];
+    }),
+  );
 }
 export class Minecraft {
   constructor(
@@ -242,7 +241,7 @@ export class Minecraft {
     }
     return files;
   }
-  async install(id: string, ctx: Work) {
+  async install(id: string, ctx: Work, finalStatus: 'ready' | 'installing' = 'ready') {
     const i = this.store.instance(id);
     if (i.external) throw new Error('外部版本请在原启动器安装或修复，然后刷新游戏文件夹');
     i.status = 'installing';
@@ -257,24 +256,31 @@ export class Minecraft {
       for (const d of ['mods', 'saves', 'resourcepacks', 'shaderpacks', 'screenshots', 'logs'])
         await mkdir(path.join(root, d), { recursive: true });
       const files = this.libraryFiles(v, id);
-      let done = 0;
+      const libraries = fileProgress(
+        ctx,
+        files.map((f) => f.artifact.size),
+        5,
+        35,
+      );
       await pool(
         files,
         this.store.data.settings.concurrency,
-        async (f) => {
+        async (f, index) => {
           await this.net.download(f.artifact.url, f.dest, {
             signal: ctx.signal,
             hash: f.artifact.sha1,
             size: f.artifact.size,
+            onProgress: (fraction) => libraries(index, fraction, '下载运行库'),
           });
-          ctx.progress(5 + (35 * ++done) / Math.max(files.length, 1), '下载运行库');
         },
         ctx.signal,
       );
+      ctx.progress(35, '下载游戏客户端');
       await this.net.download(v.downloads.client.url, path.join(root, 'client.jar'), {
         signal: ctx.signal,
         hash: v.downloads.client.sha1,
         size: v.downloads.client.size,
+        onProgress: (fraction) => ctx.progress(35 + 25 * fraction, '下载游戏客户端'),
       });
       const assets = path.join(this.store.runtime(id), 'assets');
       const indexPath = inside(path.join(assets, 'indexes'), v.assetIndex.id + '.json');
@@ -282,6 +288,7 @@ export class Minecraft {
         signal: ctx.signal,
         hash: v.assetIndex.sha1,
         size: v.assetIndex.size,
+        onProgress: (fraction) => ctx.progress(60 + 2 * fraction, '下载资源索引'),
       });
       const index = await json<{
         objects: Record<string, { hash: string; size: number }>;
@@ -289,11 +296,16 @@ export class Minecraft {
         map_to_resources?: boolean;
       }>(indexPath);
       const objects = Object.entries(index.objects);
-      done = 0;
+      const assetsProgress = fileProgress(
+        ctx,
+        objects.map(([, a]) => a.size),
+        62,
+        95,
+      );
       await pool(
         objects,
         this.store.data.settings.concurrency,
-        async ([name, a]) => {
+        async ([name, a], item) => {
           if (!/^[0-9a-f]{40}$/.test(a.hash)) throw new Error('无效资源哈希');
           const relative = `${a.hash.slice(0, 2)}/${a.hash}`;
           const dest = path.join(assets, 'objects', relative);
@@ -301,6 +313,7 @@ export class Minecraft {
             signal: ctx.signal,
             hash: a.hash,
             size: a.size,
+            onProgress: (fraction) => assetsProgress(item, fraction, '下载游戏资源'),
           });
           if (index.virtual || index.map_to_resources) {
             const p = inside(
@@ -312,10 +325,10 @@ export class Minecraft {
             await mkdir(path.dirname(p), { recursive: true });
             await copyFile(dest, p);
           }
-          ctx.progress(40 + (55 * ++done) / Math.max(objects.length, 1), '下载游戏资源');
         },
         ctx.signal,
       );
+      ctx.progress(95, '整理游戏文件');
       const natives = path.join(root, 'natives');
       await rm(natives, { recursive: true, force: true });
       await mkdir(natives, { recursive: true });
@@ -328,7 +341,7 @@ export class Minecraft {
       if (i.loader === 'forge' || i.loader === 'neoforge')
         v = await new Forge(this.store, this.net).install(id, v, ctx);
       await atomicJson(this.profile(id), v);
-      i.status = 'ready';
+      i.status = finalStatus;
       this.store.save();
     } catch (e) {
       i.status = 'error';

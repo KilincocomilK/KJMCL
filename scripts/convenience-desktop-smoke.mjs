@@ -230,6 +230,7 @@ try {
     (await snapshot(page)).instances.find((instance) => instance.id === ids[0]).launchOptions,
   ).toEqual({ accountId: accounts[1], fullscreen: true, target: { kind: 'menu' } });
   await page.getByRole('button', { name: '游戏实例', exact: true }).click();
+  await page.getByRole('button', { name: '日志测试', exact: true }).click();
   await page.getByRole('button', { name: '日志测试 设置', exact: true }).click();
   await expect(page.getByRole('combobox', { name: '启动账户', exact: true })).toContainText(
     'FixtureSecond',

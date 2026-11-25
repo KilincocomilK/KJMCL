@@ -3,7 +3,7 @@ import react from '@vitejs/plugin-react';
 export default defineConfig({
   base: './',
   plugins: [react()],
-  build: { rollupOptions: { input: ['index.html', 'lightweight.html'] } },
+  build: { rollupOptions: { input: ['index.html', 'lightweight.html', 'system-dialog.html'] } },
   server: { host: '127.0.0.1', port: 5173, strictPort: true },
   test: { include: ['tests/**/*.test.ts'] },
 } as Parameters<typeof defineConfig>[0]);

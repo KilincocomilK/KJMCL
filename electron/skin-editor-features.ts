@@ -1,3 +1,4 @@
+import { showSystemDialog } from './system-dialog';
 import { dialog, shell, type BrowserWindow } from 'electron';
 import type { Api } from '../shared/types';
 import type { Store } from './core/store';
@@ -51,8 +52,7 @@ export function skinEditorHandlers(c: {
     skinEditorRestoreVersion: ({ id, versionId }) => editor.restoreVersion(id, versionId),
     skinEditorSave: (value) => editor.save(value),
     skinEditorDelete: async (id) => {
-      const answer = await dialog.showMessageBox(c.window(), {
-        type: 'question',
+      const answer = await showSystemDialog(c.window(), {
         message: '将此作品移入回收站？',
         buttons: ['取消', '移入回收站'],
         defaultId: 0,
@@ -90,8 +90,7 @@ export function skinEditorHandlers(c: {
       if (!account) throw new Error('账户不存在');
       if (project.resolution !== 64) throw new Error('应用到账户前，请将分辨率调整为 64×64');
       const bytes = encodeSkinPng(project);
-      const answer = await dialog.showMessageBox(c.window(), {
-        type: 'question',
+      const answer = await showSystemDialog(c.window(), {
         message:
           account.kind === 'offline'
             ? `将皮肤保存为 ${account.name} 的本地预览？`

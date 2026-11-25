@@ -1,6 +1,9 @@
+import { showSystemDialog } from './system-dialog';
 import { dialog, shell, type BrowserWindow } from 'electron';
 import path from 'node:path';
+import ruleCatalog from '../shared/game-rules.json';
 import type { Api } from '../shared/types';
+import { worldDimensionName } from '../shared/world-dimensions';
 import type { SaveManager } from './core/save-manager';
 import type { Tasks } from './core/tasks';
 import { archiveWorld } from './core/archives';
@@ -17,17 +20,51 @@ export function saveHandlers(c: {
     saveWorlds: (id) => saves.list(id),
     scanWorld: (v) => saves.scan(v),
     worldRegion: (v) => saves.region(v),
+    worldTerrainTiles: (v) => saves.terrainTiles(v),
+    planWorldSelection: async (v) => {
+      await c.writable(v.id);
+      return tasks.exclusive(v.id, () => saves.plan(v));
+    },
+    editGameRules: async (v) => {
+      await c.writable(v.id);
+      const display = (s: string) => (s === 'true' ? '开启' : s === 'false' ? '关闭' : s);
+      const answer = await showSystemDialog(c.window(), {
+        message: '保存“' + v.world + '”的游戏规则？',
+        detail: v.changes
+          .map((change) => {
+            const rule = ruleCatalog.find(
+              (item) => item.legacy === change.key || item.modern === change.key,
+            );
+            return (
+              (rule?.name ?? change.key) +
+              '　' +
+              display(change.before) +
+              ' → ' +
+              display(change.value)
+            );
+          })
+          .join('\n'),
+        buttons: ['取消', '保存规则'],
+        defaultId: 0,
+        cancelId: 0,
+      });
+      if (answer.response !== 1) return false;
+      await c.writable(v.id);
+      await tasks.exclusive(v.id, () => saves.editRules(v, v.changes));
+      c.changed();
+      return true;
+    },
     planWorldPrune: async (v) => {
       await c.writable(v.id);
       return tasks.exclusive(v.id, () => saves.plan(v));
     },
     applyWorldPrune: async (token) => {
       const t = saves.ticket(token);
+      if (!t.plan.selected.length) throw new Error('没有可清理的区块');
       await c.writable(t.request.id);
-      const answer = await dialog.showMessageBox(c.window(), {
-        type: 'warning',
-        message: `清理“${t.request.world}”中的 ${t.plan.selected.length} 个区块？`,
-        detail: '受影响的地形、实体和 POI 文件会先备份。已清理区块下次进入游戏时会重新生成。',
+      const answer = await showSystemDialog(c.window(), {
+        message: `确认清理“${t.request.world}”${worldDimensionName(t.request.dimension)}的 ${t.plan.selected.length} 个区块？`,
+        detail: '所选区块内的建筑和实体将被移除，地形会在下次加载时重新生成。可从编辑历史撤销。',
         buttons: ['取消', '备份并清理'],
         defaultId: 0,
         cancelId: 0,
@@ -79,6 +116,9 @@ export function saveHandlers(c: {
     | 'saveWorlds'
     | 'scanWorld'
     | 'worldRegion'
+    | 'worldTerrainTiles'
+    | 'editGameRules'
+    | 'planWorldSelection'
     | 'planWorldPrune'
     | 'applyWorldPrune'
     | 'editWorld'

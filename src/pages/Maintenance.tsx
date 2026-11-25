@@ -38,10 +38,6 @@ export function MaintenancePage({ state, run }: { state: Snapshot; run: Run }) {
           预览缓存清理
         </button>
       </div>
-      <p className="muted">
-        按实例和共享目录统计文件大小，跳过链接。清理仅处理超过 24 小时的缓存；游戏、存档、备份和
-        Java 保留。
-      </p>
       {result && <p role="status">{result}</p>}
       {report ? (
         <section className="panel disk-report">
@@ -73,7 +69,7 @@ export function MaintenancePage({ state, run }: { state: Snapshot; run: Run }) {
           )}
         </section>
       ) : (
-        <Empty title="查看磁盘空间去向" description="扫描活动数据目录和当前实例的游戏目录" />
+        <Empty art="chest" title="尚未统计磁盘占用" />
       )}
       {review && (
         <Modal
@@ -84,9 +80,8 @@ export function MaintenancePage({ state, run }: { state: Snapshot; run: Run }) {
         >
           <div className="form-stack">
             <p>
-              可清理 {review.files} 个文件，共 {size(review.bytes)}。
+              超过 24 小时的缓存共 {review.files} 个文件，{size(review.bytes)}。
             </p>
-            <p>仅删除本次预览且之后未改变的缓存文件。已变化或被替换为链接的条目会跳过。</p>
             <button
               className="primary"
               disabled={locked || !review.files}
@@ -97,7 +92,8 @@ export function MaintenancePage({ state, run }: { state: Snapshot; run: Run }) {
                   setReview(undefined);
                   setReport(undefined);
                   setResult(
-                    `已清理 ${r.files} 个文件，释放 ${size(r.bytes)}；跳过 ${r.skipped} 个。`,
+                    `已清理 ${r.files} 个文件，释放 ${size(r.bytes)}` +
+                      (r.skipped ? `，跳过 ${r.skipped} 个` : ''),
                   );
                 }).finally(() => setBusy(false));
               }}

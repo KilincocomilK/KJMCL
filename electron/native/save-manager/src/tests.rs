@@ -47,6 +47,129 @@ fn request() -> serde_json::Value {
     json!({"dimension":"overworld","rx":0,"rz":0,"indices":[0,1,1023],"protectSpawn":0})
 }
 #[test]
+fn rule_changes_preserve_types_unknown_tags_and_undo_exact_bytes() {
+    let d = fixture();
+    let root = d.path();
+    for (file, doc, key, version) in [
+        (
+            "level.dat",
+            nbt!({"Data":{"DataVersion":3955i32,"GameRules":{"keepInventory":"false","customRule":"abc"}}}),
+            "keepInventory",
+            3955,
+        ),
+        (
+            "level.dat",
+            nbt!({"Data":{"DataVersion":4671i32,"game_rules":{"minecraft:keep_inventory":0i8,"mod:custom":42i32}}}),
+            "minecraft:keep_inventory",
+            4671,
+        ),
+        (
+            crate::rules::SIDE,
+            nbt!({"DataVersion":4786i32,"data":{"minecraft:keep_inventory":0i8,"mod:custom":42i32}}),
+            "minecraft:keep_inventory",
+            4786,
+        ),
+    ] {
+        if file != "level.dat" {
+            fs::write(
+                root.join("level.dat"),
+                gzip(&nbt!({"Data":{"DataVersion":version}})),
+            )
+            .unwrap();
+        }
+        let p = root.join(file);
+        fs::create_dir_all(p.parent().unwrap()).unwrap();
+        let original = gzip(&doc);
+        fs::write(&p, &original).unwrap();
+        let request = json!({"transaction":format!("rule-{version}"),"changes":[{"key":key,"before":"false","value":"true"}]});
+        safety::edit_rules(root, &request).unwrap();
+        assert_eq!(world::metadata(root).unwrap()["rules"][key], "true");
+        let changed = world::read_nbt(root, file).unwrap();
+        let map = if file != "level.dat" {
+            nbt::get(&changed, "data").unwrap()
+        } else {
+            nbt::get(
+                nbt::get(&changed, "Data").unwrap(),
+                if version == 3955 {
+                    "GameRules"
+                } else {
+                    "game_rules"
+                },
+            )
+            .unwrap()
+        };
+        if version == 3955 {
+            assert_eq!(nbt::get(map, key), Some(&Value::String("true".into())));
+            assert_eq!(nbt::string(nbt::get(map, "customRule")), Some("abc"));
+        } else {
+            assert_eq!(nbt::get(map, key), Some(&Value::Byte(1)));
+            assert_eq!(nbt::get(map, "mod:custom"), Some(&Value::Int(42)));
+        }
+        assert!(safety::edit_rules(root, &request).is_err());
+        safety::undo(root, &request).unwrap();
+        assert_eq!(fs::read(p).unwrap(), original);
+    }
+}
+#[test]
+fn sparse_rules_create_and_restore_modern_saved_data() {
+    let d = fixture();
+    let root = d.path();
+    fs::write(
+        root.join("level.dat"),
+        gzip(&nbt!({"Data":{"DataVersion":4786i32}})),
+    )
+    .unwrap();
+    let request = json!({"transaction":"implicit","changes":[{"key":"minecraft:random_tick_speed","before":"3","value":"0"}]});
+    safety::edit_rules(root, &request).unwrap();
+    let saved = world::read_nbt(root, crate::rules::SIDE).unwrap();
+    assert_eq!(
+        nbt::get(
+            nbt::get(&saved, "data").unwrap(),
+            "minecraft:random_tick_speed"
+        ),
+        Some(&Value::Int(0))
+    );
+    safety::undo(root, &request).unwrap();
+    assert!(!root.join(crate::rules::SIDE).exists());
+    assert_eq!(
+        world::metadata(root).unwrap()["rules"]["minecraft:random_tick_speed"],
+        "3"
+    );
+}
+#[test]
+fn cross_region_selection_uses_each_files_own_indices_and_one_journal() {
+    let d = fixture();
+    let root = d.path();
+    let modern = root.join("dimensions/minecraft/overworld");
+    fs::create_dir_all(&modern).unwrap();
+    for kind in ["region", "entities", "poi"] {
+        fs::rename(root.join(kind), modern.join(kind)).unwrap();
+    }
+    let a = modern.join("region/r.0.0.mca");
+    let b = modern.join("region/r.-1.0.mca");
+    region_file(&b, &[(0, chunk(false)), (1023, chunk(false))]);
+    let before = (fs::read(&a).unwrap(), fs::read(&b).unwrap());
+    assert_eq!(
+        world::scan(root).unwrap()["dimensions"][0]["id"],
+        "overworld"
+    );
+    let plan=safety::plan_many(root,&json!({"dimension":"overworld","groups":[{"rx":0,"rz":0,"indices":[0,1]},{"rx":-1,"rz":0,"indices":[1023]}],"protectSpawn":0})).unwrap();
+    assert_eq!(plan["selected"].as_array().unwrap().len(), 2);
+    assert_eq!(plan["skipped"].as_array().unwrap().len(), 1);
+    safety::apply(root, &json!({"transaction":"both","plan":plan})).unwrap();
+    assert_eq!(
+        region::header(&a, 0, 0)
+            .unwrap()
+            .iter()
+            .map(|c| c.index)
+            .collect::<Vec<_>>(),
+        vec![1, 1023]
+    );
+    assert_eq!(region::header(&b, -1, 0).unwrap()[0].index, 0);
+    safety::undo(root, &json!({"transaction":"both"})).unwrap();
+    assert_eq!((fs::read(a).unwrap(), fs::read(b).unwrap()), before);
+}
+#[test]
 #[cfg(unix)]
 fn linked_world_paths_are_rejected() {
     let d = fixture();
@@ -120,8 +243,69 @@ fn terrain_and_cache_are_real_pixels() {
     );
     assert_eq!(first["chunks"][0]["palette"][0], "minecraft:stone");
     assert_eq!(region::inspect(d.path(), &r).unwrap()["cached"], true);
-    let (pixels, _) = nbt::surface(&chunk(false)).unwrap();
+    let pixels = nbt::surface(&chunk(false)).unwrap().pixels;
     assert_eq!(&pixels[0..4], &[125, 125, 127, 255]);
+}
+#[test]
+fn preview_accepts_empty_companions_without_touching_the_world() {
+    let d = fixture();
+    let root = d.path();
+    let entities = root.join("entities/r.0.0.mca");
+    let poi = root.join("poi/r.0.0.mca");
+    fs::write(&entities, []).unwrap();
+    region_file(&poi, &[(1, chunk(false))]);
+    let original_poi = fs::read(&poi).unwrap();
+    let original = fs::read(root.join("region/r.0.0.mca")).unwrap();
+    let plan = safety::plan(root, &request()).unwrap();
+    assert_eq!(plan["selected"], json!([0, 1023]));
+    assert_eq!(plan["files"].as_array().unwrap().len(), 1);
+    assert!(!root.join("session.lock").exists());
+    assert!(!root.join(".kjmcl-history").exists());
+    assert_eq!(fs::read(root.join("region/r.0.0.mca")).unwrap(), original);
+    safety::apply(root, &json!({"transaction":"empty","plan":plan})).unwrap();
+    assert!(fs::read(&entities).unwrap().is_empty());
+    assert_eq!(fs::read(&poi).unwrap(), original_poi);
+    safety::undo(root, &json!({"transaction":"empty"})).unwrap();
+    assert_eq!(fs::read(root.join("region/r.0.0.mca")).unwrap(), original);
+}
+#[test]
+fn truncated_files_skip_their_region_and_preserve_all_its_bytes() {
+    for kind in ["region", "entities", "poi"] {
+        let d = fixture();
+        let root = d.path();
+        let file = root.join(format!("{kind}/r.0.0.mca"));
+        fs::write(&file, [3; 4096]).unwrap();
+        let terrain = root.join("region/r.0.0.mca");
+        let original = fs::read(&terrain).unwrap();
+        region_file(&root.join("region/r.-1.0.mca"), &[(0, chunk(false))]);
+        let plan = safety::plan_many(root, &json!({"dimension":"overworld","groups":[{"rx":0,"rz":0,"indices":[0,1]},{"rx":-1,"rz":0,"indices":[0]}],"protectSpawn":0})).unwrap();
+        assert_eq!(plan["selected"].as_array().unwrap().len(), 1);
+        assert_eq!(plan["skipped"].as_array().unwrap().len(), 2);
+        assert_eq!(plan["files"][0]["relative"], "region/r.-1.0.mca");
+        safety::apply(root, &json!({"transaction":"healthy","plan":plan})).unwrap();
+        assert_eq!(fs::read(file).unwrap(), vec![3; 4096]);
+        assert_eq!(fs::read(terrain).unwrap(), original);
+    }
+}
+#[test]
+fn changed_unwritten_companions_invalidate_the_preview() {
+    for mode in ["missing", "empty", "unselected"] {
+        let d = fixture();
+        let root = d.path();
+        let file = root.join("entities/r.0.0.mca");
+        match mode {
+            "missing" => fs::remove_file(&file).unwrap(),
+            "empty" => fs::write(&file, []).unwrap(),
+            _ => region_file(&file, &[(1, chunk(false))]),
+        }
+        let terrain = root.join("region/r.0.0.mca");
+        let before = fs::read(&terrain).unwrap();
+        let plan = safety::plan(root, &request()).unwrap();
+        region_file(&file, &[(0, chunk(false))]);
+        assert!(safety::apply(root, &json!({"transaction":"stale","plan":plan})).is_err());
+        assert_eq!(fs::read(terrain).unwrap(), before);
+        assert!(!root.join(".kjmcl-history").exists());
+    }
 }
 #[test]
 fn preview_protects_spawn_gateways_and_unknown_filters() {
@@ -251,6 +435,37 @@ fn locked_world_refuses_writes() {
     )
     .unwrap();
     assert_eq!(world::metadata(d.path()).unwrap()["name"], "unlocked");
+}
+#[test]
+fn distant_terrain_samples_real_occupied_chunks() {
+    use base64::Engine;
+    let d = fixture();
+    for side in [1, 8, 32] {
+        let tiles = region::terrain_tiles(
+            d.path(),
+            &json!({"dimension":"overworld","side":side,"regions":[{"rx":0,"rz":0}]}),
+        )
+        .unwrap();
+        let pixels = base64::engine::general_purpose::STANDARD
+            .decode(tiles[0]["pixels"].as_str().unwrap())
+            .unwrap();
+        assert_eq!(pixels.len(), side * side * 4);
+        assert_eq!(&pixels[..4], &[125, 125, 127, 255]);
+        if side > 1 {
+            assert_eq!(pixels[(side - 1) * 4 + 3], 0);
+        }
+    }
+}
+#[test]
+fn legacy_anvil_retains_surface_elevation_and_material() {
+    let mut ids = vec![0i8; 4096];
+    ids[2] = 9;
+    ids[4 * 256 + 2] = 2;
+    let legacy = nbt!({"Level":{"Sections":[{"Y":2i8,"Blocks":Value::ByteArray(fastnbt::ByteArray::new(ids))}]}});
+    let surface = nbt::surface(&legacy).unwrap();
+    assert_eq!(surface.heights[2], 36);
+    assert_eq!(&surface.pixels[8..12], &[100, 143, 68, 255]);
+    assert!(surface.palette.iter().any(|n| n == "minecraft:grass_block"));
 }
 #[test]
 fn packed_indices_handle_padded_and_cross_word_formats() {

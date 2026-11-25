@@ -15,7 +15,7 @@ import { mkdir, readdir, lstat, copyFile, rm, rmdir, statfs } from 'node:fs/prom
 import { z } from 'zod';
 import { atomicJson, hashFile, inside, json, exists } from './files';
 import { contains } from './instances';
-import type { Store } from './store';
+import { STATE_VERSION, supportsStateVersion, type Store } from './store';
 import type { Work } from './tasks';
 import type { StorageInfo } from '../../shared/types';
 
@@ -29,6 +29,7 @@ const directories = new Set([
   'cache',
   'authlib',
   'credentials',
+  'assistant',
   'backups',
   'diagnostics',
   'video-backups',
@@ -37,8 +38,12 @@ const directories = new Set([
   'seed-map',
   'projection-workshop',
 ]);
-const ownedName = (name: string) =>
-  directories.has(name) || /^state\.json(?:\.bak|\.v[1-6]\.bak)?$/.test(name);
+const stateFiles = new Set([
+  'state.json',
+  'state.json.bak',
+  ...Array.from({ length: STATE_VERSION - 1 }, (_, i) => `state.json.v${i + 1}.bak`),
+]);
+const ownedName = (name: string) => directories.has(name) || stateFiles.has(name);
 const configSchema = z.object({
   version: z.literal(1),
   root: z.string().min(1),
@@ -257,10 +262,7 @@ export class Storage {
       )
         throw new Error('目标文件已变化，未切换：' + f.file);
     const targetState = await json<any>(path.join(m.target, 'state.json'));
-    if (
-      ![1, 2, 3, 4, 5, 6, 7].includes(targetState.schemaVersion) ||
-      !Array.isArray(targetState.instances)
-    )
+    if (!supportsStateVersion(targetState.schemaVersion) || !Array.isArray(targetState.instances))
       throw new Error('目标状态无效');
     await atomicJson(path.join(this.layout.control, 'storage-location.json'), {
       ...this.layout.config,

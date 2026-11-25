@@ -1,9 +1,11 @@
 import { Select } from '../Select';
 import { useEffect, useState } from 'react';
-import { Copy, Download, Play, Radio, Users } from 'lucide-react';
+import { Copy, Download, Play, Users } from 'lucide-react';
 import type { Snapshot, TerracottaState } from '../../shared/types';
 import { api } from '../api';
 import type { Run } from '../ui';
+import { ItemArt } from '../components/ItemArt';
+import { SettingGroup } from '../components/SettingGroup';
 const labels: Record<string, string> = {
   offline: '未连接',
   'host-scanning': '等待世界对局域网开放',
@@ -58,19 +60,17 @@ export function MultiplayerPage({ state, run }: { state: Snapshot; run: Run }) {
   const copy = (text: string) =>
     void run(async () => navigator.clipboard.writeText(text), '已复制');
   return (
-    <div className="multiplayer-page">
+    <div className="multiplayer-page single-page">
       <section className="panel multiplayer-header">
-        <Radio size={32} />
+        <ItemArt name="globe" size={48} />
         <div>
           <h2>
-            陶瓦联机{' '}
-            {status?.state !== 'waiting' && (
-              <span className="status">
-                {status ? (labels[status.state] ?? status.state) : '正在读取…'}
-              </span>
-            )}
+            {status
+              ? status.state === 'waiting'
+                ? '已连接'
+                : (labels[status.state] ?? status.state)
+              : '正在读取…'}
           </h2>
-          <small>Terracotta © Burning_TNT 及贡献者 · 基于 EasyTier</small>
         </div>
         {status?.version && <small>{status.version}</small>}
       </section>
@@ -124,9 +124,10 @@ export function MultiplayerPage({ state, run }: { state: Snapshot; run: Run }) {
         </p>
       )}
       {!status?.connected && (
-        <p className="muted">
-          首次使用请安装官方组件。macOS 请先运行官方陶瓦应用，再点击连接。下载进度见“下载任务”。
-        </p>
+        <details className="minor-details">
+          <summary>连接帮助</summary>
+          <p>首次使用请安装陶瓦组件。macOS 请先打开陶瓦应用，再点击连接。</p>
+        </details>
       )}
       <section className="panel multiplayer-identity">
         <label>
@@ -141,9 +142,8 @@ export function MultiplayerPage({ state, run }: { state: Snapshot; run: Run }) {
         </label>
       </section>
       <div className="multiplayer-grid">
-        <section className="panel">
-          <h3>创建房间</h3>
-          <p>启动游戏 → 进入世界 → 对局域网开放，再创建房间。</p>
+        <SettingGroup title="创建房间" art="block" open>
+          <p>进入世界并对局域网开放后，即可创建房间。</p>
           <button
             className="primary"
             disabled={busy || !waiting || !player.trim()}
@@ -154,10 +154,8 @@ export function MultiplayerPage({ state, run }: { state: Snapshot; run: Run }) {
             <Users size={16} />
             创建房间
           </button>
-        </section>
-        <section className="panel">
-          <h3>加入好友</h3>
-          <p>使用与房主兼容的游戏版本和模组。</p>
+        </SettingGroup>
+        <SettingGroup title="加入好友" art="map">
           <label>
             房间邀请码
             <input
@@ -179,7 +177,7 @@ export function MultiplayerPage({ state, run }: { state: Snapshot; run: Run }) {
           >
             加入房间
           </button>
-        </section>
+        </SettingGroup>
       </div>
       {status?.connected && status.state !== 'waiting' && (
         <section className="panel multiplayer-room">

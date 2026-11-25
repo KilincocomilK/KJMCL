@@ -44,6 +44,7 @@ jobs:
           node scripts/folders-desktop-smoke.mjs
           node scripts/mod-resources-desktop-smoke.mjs
           node scripts/appearance-desktop-smoke.mjs
+          node scripts/assistant-desktop-smoke.mjs
       - name: Desktop integration (Linux)
         if: runner.os == 'Linux'
         run: |

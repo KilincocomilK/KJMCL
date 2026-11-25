@@ -1,3 +1,4 @@
+import { catalogQuery } from '../../shared/search';
 import path from 'node:path';
 import { readdir, stat, rename, rm, mkdir, copyFile } from 'node:fs/promises';
 import { randomUUID } from 'node:crypto';
@@ -5,7 +6,7 @@ import { Store } from './store';
 import { Network } from './network';
 import { json, atomicJson, inside, exists, hashFile } from './files';
 import type { ModFile, ModProject } from '../../shared/types';
-import type { Work } from './tasks';
+import { progressRange, type Work } from './tasks';
 import type { CFLock } from './curseforge';
 interface LockEntry {
   projectId: string;
@@ -83,13 +84,15 @@ export class Mods {
         (await json<CFLock[]>(cfPath)).filter((x) => x.file !== name.replace(/\.disabled$/, '')),
       );
   }
-  async import(id: string, files: string[]) {
+  async import(id: string, files: string[], ctx?: Work) {
     await mkdir(this.dir(id), { recursive: true });
-    for (const file of files) {
+    for (const [index, file] of files.entries()) {
+      ctx?.signal.throwIfAborted();
       if (!file.toLowerCase().endsWith('.jar')) throw new Error('仅支持 JAR 模组');
       const dest = inside(this.dir(id), path.basename(file));
       if (await exists(dest)) throw new Error('已存在同名模组：' + path.basename(file));
       await copyFile(file, dest);
+      ctx?.progress((100 * (index + 1)) / files.length, path.basename(file));
     }
   }
   async search(id: string, query: string, offset: number) {
@@ -103,7 +106,7 @@ export class Mods {
       base +
         '/search?' +
         new URLSearchParams({
-          query,
+          query: catalogQuery(query, [i.loader, i.version, 'mod']),
           facets: JSON.stringify(facets),
           limit: '20',
           offset: String(offset),
@@ -183,6 +186,8 @@ export class Mods {
           hash: f.hashes.sha512,
           algorithm: 'sha512',
           size: f.size,
+          onProgress: (fraction) =>
+            ctx.progress((80 * (n + fraction)) / resolved.size, `下载 ${f.filename}`),
         });
         additions.push({
           projectId: v.project_id,
@@ -249,7 +254,12 @@ export class Mods {
     let n = 0;
     for (const entry of lock) {
       const latest = await this.compatible(id, entry.projectId, ctx.signal);
-      if (latest.id !== entry.versionId) await this.install(id, entry.projectId, ctx);
+      if (latest.id !== entry.versionId)
+        await this.install(
+          id,
+          entry.projectId,
+          progressRange(ctx, (100 * n) / lock.length, (100 * (n + 1)) / lock.length),
+        );
       ctx.progress((100 * ++n) / lock.length, '检查模组更新');
     }
   }

@@ -1,4 +1,7 @@
 import { z } from 'zod';
+import { DEFAULT_SIDEBAR_ORDER } from './navigation';
+import { redenFile, redenKey, redenSearch } from './reden';
+import { assistantSchemas } from './assistant';
 import { projectionSchemas } from './projection';
 import { projectionAssetsSchema } from './projection-assets';
 import { skinProjectSchema } from './skin-schema';
@@ -11,6 +14,8 @@ import {
   seedMapStateSchema,
   seedMapDocumentSchema,
 } from './seed-map';
+export const systemDialogChoice = z.number().int().nonnegative();
+export const systemDialogHeight = z.number().int().positive().max(8192);
 export const id = z
   .string()
   .min(1)
@@ -75,6 +80,11 @@ export const settingsSchema = z.object({
   instancesDir: directory.optional(),
   backupBeforeLaunch: z.boolean().optional(),
 });
+export const sidebarOrderSchema = z
+  .array(z.enum(DEFAULT_SIDEBAR_ORDER))
+  .length(DEFAULT_SIDEBAR_ORDER.length)
+  .refine((order) => new Set(order).size === order.length, '侧栏入口重复');
+
 export const appearanceControlsSchema = z
   .object({
     dim: z.number().int().min(0).max(80),
@@ -172,8 +182,10 @@ const regionRef = worldRef.extend({
   rz: z.number().int().min(-60000).max(60000),
 });
 export const schemas = {
+  ...assistantSchemas,
   ...projectionSchemas,
   projectionAssets: projectionAssetsSchema,
+  projectionImportResource: z.object({ id, name: resourcePath }).strict(),
   seedMapInfo: none,
   seedMapSeed: z.string().trim().min(1).max(256),
   seedMapRandom: none,
@@ -249,6 +261,7 @@ export const schemas = {
   pickBackground: none,
   resetBackground: none,
   updateAppearance: appearanceControlsSchema,
+  setSidebarOrder: sidebarOrderSchema,
   organizeInstance: z.object({ id, organization: organizationSchema }),
   catalogSearch: contentRefSchema.omit({ projectId: true }).extend({
     id,
@@ -270,8 +283,71 @@ export const schemas = {
   readCrash: z.object({ id, name: resourcePath }),
   exportCrash: z.object({ id, name: resourcePath }),
   saveWorlds: id,
+  searchReden: redenSearch,
+  redenDetails: redenKey,
+  redenDelivery: redenFile,
+  openRedenDownload: redenFile,
+  previewReden: redenFile,
+  installReden: z.object({ id, file: redenFile }).strict(),
+  openReden: redenKey,
   scanWorld: worldRef,
   worldRegion: regionRef,
+  worldTerrainTiles: worldRef
+    .extend({
+      dimension: regionRef.shape.dimension,
+      side: z.union([z.literal(1), z.literal(8), z.literal(32)]),
+      regions: z
+        .array(z.object({ rx: regionRef.shape.rx, rz: regionRef.shape.rz }).strict())
+        .min(1)
+        .max(32),
+    })
+    .strict(),
+  editGameRules: worldRef
+    .extend({
+      changes: z
+        .array(
+          z
+            .object({
+              key: z
+                .string()
+                .min(1)
+                .max(200)
+                .regex(/^[a-zA-Z0-9_.:/-]+$/),
+              before: z.string().max(128),
+              value: z.string().max(128),
+            })
+            .strict(),
+        )
+        .min(1)
+        .max(128)
+        .refine((a) => new Set(a.map((v) => v.key)).size === a.length),
+    })
+    .strict(),
+  planWorldSelection: worldRef
+    .extend({
+      dimension: regionRef.shape.dimension,
+      groups: z
+        .array(
+          z
+            .object({
+              rx: regionRef.shape.rx,
+              rz: regionRef.shape.rz,
+              indices: z.array(z.int().min(0).max(1023)).min(1).max(1024),
+            })
+            .strict(),
+        )
+        .min(1)
+        .max(64)
+        .refine(
+          (a) =>
+            a.reduce((n, g) => n + g.indices.length, 0) <= 8192 &&
+            new Set(a.map((g) => [g.rx, g.rz].join(','))).size === a.length,
+        ),
+      protectSpawn: z.int().min(0).max(128),
+      maxInhabitedTicks: z.int().nonnegative().optional(),
+      beforeTimestamp: z.int().min(0).max(4294967295).optional(),
+    })
+    .strict(),
   planWorldPrune: regionRef.extend({
     indices: z.array(z.number().int().min(0).max(1023)).min(1).max(1024),
     protectSpawn: z.number().int().min(0).max(128),
@@ -305,6 +381,13 @@ export const schemas = {
     .min(1)
     .max(100),
   resources: id,
+  localResourceCards: z
+    .object({
+      id,
+      kind: z.enum(['mods', 'resourcepacks', 'worlds']),
+      names: z.array(fileName).min(1).max(16),
+    })
+    .strict(),
   previewResource: resourceRef,
   renameResource: resourceRef.extend({ newName: fileName }),
   deleteResource: resourceRef,
@@ -323,6 +406,12 @@ export const schemas = {
   cleanupStorage: none,
   restartLauncher: none,
   snapshot: none,
+  checkLauncherUpdate: none,
+  openLauncherRelease: none,
+  dismissNotification: z.union([
+    z.object({ taskId: z.uuid() }).strict(),
+    z.object({ version: z.string().min(1).max(128) }).strict(),
+  ]),
   lightweightState: none,
   setLightweight: z.boolean(),
   settings: settingsSchema,
@@ -395,7 +484,8 @@ export const schemas = {
   setGameLayout: z.object({ id, layout: gameLayoutSchema }),
   worlds: id,
   backups: id,
-  backupWorld: z.object({ id, world: fileName }),
+  chooseBackupExport: worldRef,
+  backupWorld: worldRef.extend({ exportToken: z.uuid().optional() }).strict(),
   restoreBackup: z.object({ id, backupId: id }),
   deleteBackup: z.object({ id, backupId: id }),
   loginThirdParty: z.object({

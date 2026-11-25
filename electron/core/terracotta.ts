@@ -146,11 +146,19 @@ export class Terracotta {
       const name = `terracotta-${version}-${asset.platform}-${asset.arch}`;
       const archive = path.join(stage, 'download.tar.gz');
       ctx.progress(5, '下载陶瓦官方组件');
-      await this.net.download(
-        `https://github.com/burningtnt/Terracotta/releases/download/v${version}/${name}-pkg.tar.gz`,
-        archive,
-        { signal: ctx.signal, hash: asset.hash, algorithm: 'sha256' },
-      );
+      const assetPath = `/burningtnt/Terracotta/releases/download/v${version}/${name}-pkg.tar.gz`;
+      const download = (host: string) => this.net.download(host + assetPath, archive, {
+        signal: ctx.signal,
+        hash: asset.hash,
+        algorithm: 'sha256',
+        onProgress: (fraction) => ctx.progress(5 + 65 * fraction, '下载陶瓦官方组件'),
+      });
+      try {
+        await download('https://gitee.com');
+      } catch {
+        ctx.signal.throwIfAborted();
+        await download('https://github.com');
+      }
       ctx.progress(70, '校验并解包陶瓦');
       const files = unpackTerracotta(await readFile(archive));
       const executable = [...files.keys()].find(

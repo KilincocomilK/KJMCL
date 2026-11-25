@@ -9,10 +9,12 @@ import type { Account } from '../shared/types';
 import type { Skins } from '../electron/core/skins';
 import { Store } from '../electron/core/store';
 import { SkinEditorStorage } from '../electron/core/skin-editor';
+import { showSystemDialog } from '../electron/system-dialog';
+vi.mock('../electron/system-dialog', () => ({ showSystemDialog: vi.fn() }));
 import { skinEditorHandlers } from '../electron/skin-editor-features';
 
 vi.mock('electron', () => ({
-  dialog: { showMessageBox: vi.fn(), showOpenDialog: vi.fn(), showSaveDialog: vi.fn() },
+  dialog: { showOpenDialog: vi.fn(), showSaveDialog: vi.fn() },
   shell: { trashItem: vi.fn() },
 }));
 const roots: string[] = [];
@@ -67,16 +69,15 @@ describe('account skin application', () => {
     'requires explicit confirmation before applying to %s',
     async (kind) => {
       const { handlers, skins, changed, window } = await fixture(kind);
-      vi.mocked(dialog.showMessageBox).mockResolvedValueOnce({
+      vi.mocked(showSystemDialog).mockResolvedValueOnce({
         response: 0,
-        checkboxChecked: false,
       });
       expect(await handlers.skinEditorApply({ accountId: 'account', project: project() })).toBe(
         false,
       );
       expect(skins.uploadBytes).not.toHaveBeenCalled();
       expect(changed).not.toHaveBeenCalled();
-      expect(dialog.showMessageBox).toHaveBeenCalledWith(
+      expect(showSystemDialog).toHaveBeenCalledWith(
         window,
         expect.objectContaining({
           defaultId: 0,
@@ -90,7 +91,7 @@ describe('account skin application', () => {
   );
   it('uploads the confirmed composite as PNG with selected model and only then reports changed', async () => {
     const { handlers, skins, changed } = await fixture();
-    vi.mocked(dialog.showMessageBox).mockResolvedValueOnce({ response: 1, checkboxChecked: false });
+    vi.mocked(showSystemDialog).mockResolvedValueOnce({ response: 1 });
     expect(await handlers.skinEditorApply({ accountId: 'account', project: project() })).toBe(true);
     expect(skins.uploadBytes).toHaveBeenCalledTimes(1);
     const [id, data, model] = vi.mocked(skins.uploadBytes).mock.calls[0] as unknown as [
@@ -113,7 +114,7 @@ describe('account skin application', () => {
     const { handlers, skins, changed } = await fixture(),
       doc = project();
     await handlers.skinEditorSaveDraft(doc);
-    vi.mocked(dialog.showMessageBox).mockResolvedValueOnce({ response: 1, checkboxChecked: false });
+    vi.mocked(showSystemDialog).mockResolvedValueOnce({ response: 1 });
     skins.uploadBytes.mockRejectedValueOnce(new Error('fixture upload failed'));
     await expect(handlers.skinEditorApply({ accountId: 'account', project: doc })).rejects.toThrow(
       'fixture upload failed',
@@ -138,7 +139,7 @@ describe('account skin application', () => {
         project: { ...project(), schemaVersion: 99 } as unknown as SkinProject,
       }),
     ).rejects.toThrow();
-    expect(dialog.showMessageBox).not.toHaveBeenCalled();
+    expect(showSystemDialog).not.toHaveBeenCalled();
     expect(skins.uploadBytes).not.toHaveBeenCalled();
     expect(changed).not.toHaveBeenCalled();
   });
@@ -172,7 +173,7 @@ describe('editor file and recovery handlers', () => {
     vi.mocked(dialog.showSaveDialog).mockResolvedValue({ canceled: true, filePath: target });
     expect(await handlers.skinEditorExport({ project: doc, format: 'png' })).toBeNull();
     await expect(readFile(target)).rejects.toMatchObject({ code: 'ENOENT' });
-    vi.mocked(dialog.showMessageBox).mockResolvedValue({ response: 0, checkboxChecked: false });
+    vi.mocked(showSystemDialog).mockResolvedValue({ response: 0 });
     expect(await handlers.skinEditorDelete(id)).toBe(false);
     expect(await handlers.skinEditorOpen(id)).toEqual(doc);
     expect(skins.uploadBytes).not.toHaveBeenCalled();

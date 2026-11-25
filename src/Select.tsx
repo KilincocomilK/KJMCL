@@ -1,3 +1,4 @@
+import { matchesSearch } from '../shared/search';
 import {
   Children,
   isValidElement,
@@ -6,6 +7,7 @@ import {
   useLayoutEffect,
   useRef,
   useState,
+  type CSSProperties,
   type KeyboardEvent,
   type ReactNode,
   type SelectHTMLAttributes,
@@ -72,7 +74,12 @@ export function Select({ children, className = '', style, onChange, id, ...props
   const [active, setActive] = useState(-1);
   const [uncontrolled, setUncontrolled] = useState(String(props.defaultValue ?? ''));
   const [fieldLabel, setFieldLabel] = useState('');
-  const [position, setPosition] = useState({ left: 0, top: 0, width: 0, maxHeight: 300 });
+  const [position, setPosition] = useState<CSSProperties>({
+    left: 0,
+    top: 0,
+    width: 0,
+    maxHeight: 300,
+  });
   const choices = choicesFrom(children);
   const value = props.value === undefined ? uncontrolled : String(props.value);
   const selected = choices.findIndex((option) => option.value === value);
@@ -105,7 +112,7 @@ export function Select({ children, className = '', style, onChange, id, ...props
       setPosition({
         width,
         left: Math.max(12, Math.min(rect.left, window.innerWidth - width - 12)),
-        top: upward ? Math.max(12, rect.top - Math.min(desired, maxHeight) - 6) : rect.bottom + 6,
+        ...(upward ? { bottom: window.innerHeight - rect.top + 6 } : { top: rect.bottom + 6 }),
         maxHeight,
       });
     };
@@ -185,10 +192,17 @@ export function Select({ children, className = '', style, onChange, id, ...props
       search.current.text =
         (now - search.current.at < 600 ? search.current.text : '') + event.key.toLocaleLowerCase();
       search.current.at = now;
-      const next = choices.findIndex(
+      const prefix = choices.findIndex(
         (option) =>
           !option.disabled && option.label.toLocaleLowerCase().startsWith(search.current.text),
       );
+      const next =
+        prefix >= 0
+          ? prefix
+          : choices.findIndex(
+              (option) =>
+                !option.disabled && matchesSearch(search.current.text, option.label, option.value),
+            );
       if (!open) show();
       if (next >= 0) setActive(next);
     }

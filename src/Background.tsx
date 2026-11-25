@@ -1,7 +1,6 @@
 import { useEffect, useState, type CSSProperties } from 'react';
 import type { Snapshot } from '../shared/types';
 import { api } from './api';
-import { Terrain } from './components';
 
 export function Background({ state }: { state: Snapshot }) {
   const appearance = state.appearance;
@@ -36,7 +35,7 @@ export function Background({ state }: { state: Snapshot }) {
       }
     >
       <div className="background-scene">
-        {url ? <img src={url} alt="" onError={() => setImage(undefined)} /> : <Terrain />}
+        {url && <img src={url} alt="" onError={() => setImage(undefined)} />}
       </div>
       <div className="background-shade" />
     </div>

@@ -1,5 +1,7 @@
 import path from 'node:path';
-import { constants } from 'node:fs';
+import { constants, createReadStream, createWriteStream } from 'node:fs';
+import { pipeline } from 'node:stream/promises';
+import type { Work } from './tasks';
 import { lstat, mkdir, readdir, copyFile, rm, link, unlink } from 'node:fs/promises';
 import { randomUUID } from 'node:crypto';
 import type { Store } from './store';
@@ -16,6 +18,7 @@ import type {
   Loader,
 } from '../../shared/types';
 
+export const MAX_RESOURCE_BYTES = 2 * 1024 ** 3;
 export const resourceKinds: ResourceKind[] = [
   'mods',
   'shaderpacks',
@@ -89,7 +92,7 @@ export class Resources {
         c.size = info.size;
         if (info.isSymbolicLink() || !info.isFile())
           throw new Error('仅支持文件，不支持文件夹或链接');
-        if (info.size > 2 * 1024 ** 3) throw new Error('单个资源不能超过 2 GiB');
+        if (info.size > MAX_RESOURCE_BYTES) throw new Error('单个资源不能超过 2 GiB');
         let loaders: Loader[] = [],
           exactVersion: string | undefined;
         if (/\.(litematic|schematic|schem|nbt)$/i.test(file)) c.kind = 'schematics';
@@ -121,7 +124,7 @@ export class Resources {
             names.has('kjmcl-pack.json')
           )
             throw new Error('整合包请使用“游戏实例 → 导入整合包”');
-          else c.reason = '无法识别 ZIP 用途，请选择资源类型与实例';
+          else c.reason = '请选择 ZIP 的资源类型';
         } else throw new Error('不支持此文件，支持 JAR、ZIP、MCPR 和原理图');
         const candidates = this.store.data.instances.filter(
           (i) =>
@@ -134,7 +137,6 @@ export class Resources {
         c.reason ||= [
           loaders.length ? [...new Set(loaders)].join(' / ') : '',
           exactVersion ? 'Minecraft ' + exactVersion : '',
-          c.suggestedInstanceId ? '已推荐实例，请确认' : '请选择实例；未验证完整依赖兼容性',
         ]
           .filter(Boolean)
           .join(' · ');
@@ -148,7 +150,10 @@ export class Resources {
     }
     return result;
   }
-  async importOne(choice: ResourceImportChoice): Promise<ResourceImportResult> {
+  importName(token: string) {
+    return this.tickets.get(token)?.candidate.name;
+  }
+  async importOne(choice: ResourceImportChoice, ctx?: Work): Promise<ResourceImportResult> {
     const ticket = this.tickets.get(choice.token);
     if (!ticket || ticket.expires < Date.now()) throw new Error('导入已过期，请重新选择文件');
     const { file, candidate: c } = ticket;
@@ -160,12 +165,20 @@ export class Resources {
     const dir = await this.location(choice.id, choice.kind, '', true);
     const tmp = path.join(dir, '.kjmcl-import-' + randomUUID());
     try {
-      await copyFile(file, tmp, constants.COPYFILE_EXCL);
+      let copied = 0;
+      const input = createReadStream(file);
+      input.on('data', (chunk) => {
+        copied += chunk.length;
+        ctx?.progress((80 * copied) / Math.max(1, c.size), c.name);
+      });
+      await pipeline(input, createWriteStream(tmp, { flags: 'wx' }), { signal: ctx?.signal });
+      ctx?.progress(80, '校验 ' + c.name);
       if ((await hashFile(tmp, 'sha256')) !== ticket.hash)
         throw new Error('源文件已改变，请重新拖入');
       const ext = path.extname(c.name),
         stem = c.name.slice(0, -ext.length);
       for (let n = 0; n < 1000; n++) {
+        ctx?.signal.throwIfAborted();
         const name = n ? `${stem} (${n})${ext}` : c.name;
         if (!safeName(name)) throw new Error('文件名过长，请先缩短文件名');
         const dest = await this.location(choice.id, choice.kind, name);
@@ -184,10 +197,10 @@ export class Resources {
       await rm(tmp, { force: true });
     }
   }
-  async list(id: string): Promise<ResourceFile[]> {
+  async list(id: string, kinds: readonly ResourceKind[] = resourceKinds): Promise<ResourceFile[]> {
     const result: ResourceFile[] = [];
     let visited = 0;
-    for (const kind of resourceKinds) {
+    for (const kind of kinds) {
       const root = await this.location(id, kind);
       const walk = async (dir: string, prefix = '', depth = 0) => {
         if (depth > 8) return;
@@ -266,7 +279,7 @@ export class Resources {
         typeof m.date === 'number' ? new Date(m.date).toLocaleString('zh-CN') : undefined,
       );
       detail('玩家数量', Array.isArray(m.players) ? m.players.length : undefined);
-      preview.description = '在此实例的 Replay Viewer 中回放录像';
+      preview.description = '在 Replay Viewer 中回放';
     } else if (kind === 'resourcepacks') {
       const p = metadataJson(data, 'pack.mcmeta')?.pack;
       detail('资源包格式', p?.pack_format);
@@ -277,8 +290,8 @@ export class Resources {
         metadataJson(data, 'fabric.mod.json') ?? metadataJson(data, 'quilt.mod.json')?.quilt_loader;
       detail('模组 ID', m?.id);
       detail('版本', m?.version);
-      preview.description = String(m?.description ?? '请在模组中心启用、禁用或更新模组');
-    } else preview.description = '在游戏的光影设置中启用；效果取决于光影加载器与显卡';
+      if (m?.description) preview.description = String(m.description);
+    } else preview.description = '在游戏的光影设置中启用';
     return preview;
   }
 }

@@ -1,5 +1,5 @@
 .skin-editor {
-  --skin-border: rgba(255, 255, 255, 0.1);
+  --skin-border: var(--line);
   width: 100%;
   min-width: 0;
 }
@@ -62,7 +62,7 @@
 .skin-save-state {
   margin-left: auto;
   color: var(--muted, #9b9b9b);
-  font-size: 11px;
+  font-size: 12px;
 }
 .skin-menu {
   position: relative;
@@ -84,7 +84,8 @@
   background: #17191d;
   border: 1px solid var(--skin-border);
   z-index: 30;
-  box-shadow: 0 10px 40px #0008;
+  box-shadow: 3px 3px #10120f;
+  animation: menu-in 120ms var(--out);
 }
 .skin-menu button {
   justify-content: flex-start;
@@ -108,8 +109,8 @@
 .skin-toolbox > label,
 .skin-inspector > section > label {
   display: block;
-  font-size: 11px;
-  color: #a6a8ad;
+  font-size: 12px;
+  color: var(--muted);
   margin: 9px 0;
 }
 .skin-toolbox output {
@@ -127,7 +128,7 @@
   border-color: transparent;
 }
 .skin-tools kbd {
-  font-size: 9px;
+  font-size: 12px;
   opacity: 0.4;
   font-family: inherit;
 }
@@ -155,17 +156,13 @@
   color: white;
   text-shadow: 0 1px 2px black;
 }
-.skin-hex {
-  font-family: monospace;
-}
 .skin-editor details:not(.skin-menu) {
   border-top: 1px solid var(--skin-border);
   margin-top: 12px;
   padding-top: 9px;
 }
 .skin-editor details:not(.skin-menu) > summary {
-  font-size: 12px;
-  font-weight: 600;
+  font: 14px/1.4 var(--pixel);
   cursor: pointer;
   margin-bottom: 9px;
 }
@@ -177,7 +174,7 @@
 .skin-toolbox .check,
 .skin-inspector .check {
   display: flex;
-  font-size: 11px;
+  font-size: 12px;
   gap: 5px;
   margin: 7px 0;
 }
@@ -199,7 +196,7 @@
   margin-bottom: 8px;
 }
 .skin-view-bar .check {
-  font-size: 11px;
+  font-size: 12px;
 }
 .skin-view-bar > button:last-child {
   margin-left: auto;
@@ -237,7 +234,7 @@
   justify-content: space-between;
   min-height: 26px;
   color: #8c9097;
-  font: 10px/26px monospace;
+  font: 12px/26px var(--pixel);
   gap: 8px;
 }
 .skin-preview-options {
@@ -248,7 +245,7 @@
   max-width: 115px;
 }
 .skin-preview-options .check {
-  font-size: 11px;
+  font-size: 12px;
   gap: 4px;
 }
 .skin-inspector h2 {
@@ -259,7 +256,7 @@
   justify-content: space-between;
 }
 .skin-inspector h2 span {
-  font-size: 10px;
+  font-size: 12px;
   color: #888;
 }
 .skin-inspector section + section {
@@ -326,7 +323,7 @@
   gap: 3px;
 }
 .skin-history button {
-  font-size: 11px;
+  font-size: 12px;
   justify-content: flex-start;
 }
 .skin-reference img {
@@ -452,7 +449,7 @@
 }
 .skin-brush-options > label:not(.check) {
   display: block;
-  font-size: 11px;
+  font-size: 12px;
   margin: 8px 0;
 }
 .skin-brush-options output {

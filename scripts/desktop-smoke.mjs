@@ -35,6 +35,7 @@ try {
   await page.getByRole('button', { name: '添加账户', exact: true }).click();
   await expect(page.getByRole('heading', { name: 'KJMC_Tester' })).toBeVisible();
   await page.getByRole('button', { name: '启动器设置', exact: true }).click();
+  await page.getByText('游戏运行', { exact: true }).click();
   await page.getByRole('button', { name: '检测', exact: true }).click();
   await expect(page.locator('.java-list')).toBeVisible({ timeout: 20000 });
   // Exercise the typed preload/IPC boundary, without any download source requests.
@@ -71,13 +72,14 @@ try {
   await expect(page.getByText('sample mod.jar', { exact: true })).toBeVisible();
   await page.getByRole('switch').click();
   await expect(page.getByRole('switch')).toHaveAttribute('aria-checked', 'false');
-  await selectLauncherOption(page, '模组来源', 'curseforge');
-  await expect(page.getByLabel('搜索模组', { exact: true })).toBeVisible();
+  await selectLauncherOption(page, '内容来源', 'curseforge');
+  await expect(page.getByLabel('搜索在线模组', { exact: true })).toBeVisible();
   await mkdir(path.join(dir, 'saves/Smoke World'), { recursive: true });
   await writeFile(path.join(dir, 'saves/Smoke World/level.dat'), 'world fixture');
   await navigateWorkspace(page, '存档备份');
   await expect(page.getByText('Smoke World', { exact: true })).toBeVisible();
   await page.getByRole('button', { name: '备份', exact: true }).click();
+  await page.getByRole('button', { name: '开始备份' }).click();
   await expect(page.getByRole('button', { name: '恢复', exact: true })).toBeVisible();
   await page.getByRole('button', { name: '恢复', exact: true }).click();
   await expect
@@ -249,7 +251,14 @@ try {
     await mkdir(path.join(dir, 'logs'), { recursive: true });
     await writeFile(
       path.join(dir, 'Smoke.java'),
-      'public class Smoke { public static void main(String[] args) throws Exception { System.out.println("KJMCL_JVM_OK"); System.out.println("refresh_token=secret_fixture"); System.gc(); if(Boolean.getBoolean("kjmcl.smoke.hold")) Thread.sleep(30000); } }',
+      `public class Smoke {
+        public static void main(String[] args) throws Exception {
+          if (!Boolean.getBoolean("kjmcl.smoke.fullscreen")) throw new AssertionError("JVM feature rule");
+          System.out.print("KJMCL_JVM_OK\\nrefresh_token=secret_fixture\\n");
+          System.gc();
+          if (Boolean.getBoolean("kjmcl.smoke.hold")) Thread.sleep(30000);
+        }
+      }`,
     );
     execFileSync(path.join(bin, 'javac' + ext), [path.join(dir, 'Smoke.java')]);
     execFileSync(path.join(bin, 'jar' + ext), [
@@ -268,13 +277,19 @@ try {
         libraries: [],
         javaVersion: { majorVersion: runtime.major },
         arguments: {
-          jvm: ['-cp', '${classpath}'],
+          jvm: [
+            '-cp', '${classpath}',
+            '-XX:InitialHeapSize=32${resolution_height}K',
+            { rules: [{ action: 'allow', features: { has_custom_resolution: true } }], value: '-Xmx8G' },
+            { rules: [{ action: 'allow', features: { has_custom_resolution: false } }], value: '-Dkjmcl.smoke.fullscreen=true' },
+          ],
           game: ['--username', '${auth_player_name}', '--gameDir', '${game_directory}'],
         },
       }),
     );
     saved.instances[0].status = 'ready';
     saved.instances[0].javaPath = runtime.path;
+    saved.instances[0].launchOptions = { fullscreen: true, target: { kind: 'menu' } };
     await writeFile(
       path.join(dir, 'options.txt'),
       'renderDistance:24\r\nsimulationDistance:12\r\nentityDistanceScaling:1.0\r\nmaxFps:260\r\nfov:0.5\r\n',
@@ -284,6 +299,7 @@ try {
     const second = await firstVisibleWindow(app);
     await second.waitForSelector('h1');
     await navigateWorkspace(second, '性能与诊断');
+    await second.getByText('运行配置', { exact: true }).click();
     await selectLauncherOption(second, '内存分配', 'auto');
     await second.getByLabel('堆内存上限', { exact: true }).fill('1024');
     await selectLauncherOption(second, '垃圾收集器', 'g1');
@@ -294,6 +310,7 @@ try {
     await expect(second.getByText('JVM 试运行通过', { exact: false })).toBeVisible({
       timeout: 20000,
     });
+    await second.getByText('游戏视频预设', { exact: true }).click();
     await second.getByRole('button', { name: /低负载/ }).click();
     await expect
       .poll(async () => readFile(path.join(dir, 'options.txt'), 'utf8'))
@@ -304,6 +321,14 @@ try {
       .toContain('renderDistance:24');
     await second.locator('h1').scrollIntoViewIfNeeded();
     await second.screenshot({ path: '.local/performance-v3.png' });
+    await second.evaluate(() => {
+      window.fixtureLaunchEvents = [];
+      const off = window.kjmcl.onEvent((event) => {
+        if (event.type !== 'log') return;
+        window.fixtureLaunchEvents.push(event.line.text);
+        if (event.line.text.includes('refresh_token=')) off();
+      });
+    });
     await second.getByRole('button', { name: '开始游戏', exact: true }).click();
     await second.getByRole('button', { name: '启动游戏', exact: true }).click();
     await expect
@@ -318,6 +343,9 @@ try {
       .toContain('KJMCL_JVM_OK');
     const logs = await second.evaluate((id) => window.kjmcl.logs(id), id);
     expect(logs.map((l) => l.text).join('\n')).not.toContain('secret_fixture');
+    await expect.poll(() => second.evaluate(() => window.fixtureLaunchEvents.slice(-2))).toEqual([
+      'KJMCL_JVM_OK', 'refresh_token=[REDACTED]',
+    ]);
     await expect
       .poll(async () => second.evaluate(async () => (await window.kjmcl.snapshot()).running.length))
       .toBe(0);

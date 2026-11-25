@@ -1,3 +1,4 @@
+import { matchesSearch } from '../../shared/search';
 import { useEffect, useRef, useState } from 'react';
 import { CheckCheck, RefreshCw } from 'lucide-react';
 import type { ModAuditEntry, ModBatchReview, Snapshot } from '../../shared/types';
@@ -33,7 +34,7 @@ export function ModAuditPanel({ id, state, run }: { id: string; state: Snapshot;
   const visible = entries.filter(
     (e) =>
       (!issuesOnly || e.issues.length > 0) &&
-      [e.name, ...e.ids].join(' ').toLowerCase().includes(query.toLowerCase()),
+      matchesSearch(query, e.name, e.version, ...e.ids),
   );
   const locked =
     busy || state.running.includes(id) || state.tasks.some((t) => t.status === 'running');
@@ -67,7 +68,6 @@ export function ModAuditPanel({ id, state, run }: { id: string; state: Snapshot;
           {busy ? '检查中' : '重新检查'}
         </button>
       </div>
-      <p className="muted">检查重复 ID、顶层依赖和加载器声明。内嵌模组与版本范围仍需加载器确认。</p>
       <div className="toolbar">
         <button onClick={() => setSelected(new Set(visible.map((e) => e.name)))}>
           <CheckCheck size={16} />
@@ -121,7 +121,7 @@ export function ModAuditPanel({ id, state, run }: { id: string; state: Snapshot;
           }}
         >
           <div className="form-stack">
-            <p>{review.changes.length} 个文件将改变启用状态；内容保持不变。</p>
+            <p>将更改 {review.changes.length} 个模组的启用状态。</p>
             <div className="change-list">
               {review.changes.map((c) => (
                 <p key={c.from}>

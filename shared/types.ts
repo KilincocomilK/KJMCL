@@ -1,3 +1,5 @@
+import type { AssistantApi } from './assistant';
+import type { SidebarEntry } from './navigation';
 export type Loader = 'vanilla' | 'fabric' | 'quilt' | 'forge' | 'neoforge';
 export type GameLayout = 'auto' | 'shared' | 'version';
 export interface GameFolder {
@@ -193,13 +195,41 @@ export interface Appearance {
   blur: number;
 }
 export interface Task {
+  scope?: string;
+  kind?: 'download';
   id: string;
   title: string;
   status: 'running' | 'completed' | 'failed' | 'cancelled';
   progress: number;
   detail: string;
   createdAt: number;
+  remainingSeconds?: number;
+  finishedAt?: number;
+  notificationDismissed?: boolean;
 }
+export interface SystemDialogContent {
+  message: string;
+  detail?: string;
+  paths?: string[];
+  buttons: string[];
+  defaultId: number;
+  cancelId: number;
+}
+export interface SystemDialogApi {
+  read(): Promise<SystemDialogContent>;
+  ready(height: number): void;
+  choose(index: number): void;
+}
+
+export interface LauncherUpdate {
+  status: 'idle' | 'checking' | 'current' | 'available' | 'unpublished' | 'unavailable';
+  version?: string;
+  checkedAt?: number;
+  issue?: 'access' | 'network' | 'release' | 'rate-limit';
+  notificationDismissed?: boolean;
+}
+export type ActivityRef = { taskId: string } | { version: string };
+export type LauncherActivity = { task: Task } | { version: string };
 export interface JavaRuntime {
   path: string;
   version: string;
@@ -233,6 +263,8 @@ export interface VersionSummary {
   sha1?: string;
 }
 export interface Snapshot {
+  sidebarOrder?: SidebarEntry[];
+  assistantPending?: number;
   appearance?: Appearance;
   gameFolders: GameFolder[];
   selectedGameFolderId?: string;
@@ -247,6 +279,7 @@ export interface Snapshot {
   dataPath: string;
   platform: string;
   appVersion: string;
+  launcherUpdate?: LauncherUpdate;
   integrations?: { curseforge: boolean; modrinth: boolean };
   storage?: StorageInfo;
 }
@@ -306,8 +339,12 @@ export interface LightweightState {
   visible: boolean;
   games: { id: string; name: string }[];
   tasks: number;
+  activity?: LauncherActivity;
 }
 export type LauncherEvent =
+  | { type: 'folder-scan'; active: boolean }
+  | { type: 'assistant' }
+  | { type: 'assistant-progress'; progress: import('./assistant').AiProgress }
   | { type: 'state' }
   | { type: 'log'; line: LogLine }
   | { type: 'lightweight'; state: LightweightState }
@@ -321,6 +358,16 @@ export interface ResourceFile {
   kind: ResourceKind;
   size: number;
   modifiedAt: number;
+}
+export type LocalCardKind = 'mods' | 'resourcepacks' | 'worlds';
+export interface LocalResourceCard {
+  name: string;
+  title?: string;
+  localizedTitle?: string;
+  description?: string;
+  modId?: string;
+  version?: string;
+  icon?: string;
 }
 export interface ResourcePreview {
   title: string;
@@ -362,11 +409,17 @@ export interface TerracottaState {
   error?: string;
   members: { name: string; kind: string; vendor: string }[];
 }
-export interface Api {
-  projectionAssets(value: import('./projection-assets').ProjectionAssetsRequest): Promise<import('./projection-assets').ProjectionAssets>;
+export interface Api extends AssistantApi {
+  projectionAssets(
+    value: import('./projection-assets').ProjectionAssetsRequest,
+  ): Promise<import('./projection-assets').ProjectionAssets>;
   projectionState(): Promise<import('./projection').ProjectionState>;
   projectionRecover(): Promise<import('./projection').ProjectionState | null>;
   projectionImport(path?: string): Promise<import('./projection').ProjectionDocument | null>;
+  projectionImportResource(value: {
+    id: string;
+    name: string;
+  }): Promise<import('./projection').ProjectionDocument>;
   projectionOpen(id: string): Promise<import('./projection').ProjectionDocument>;
   projectionEdit(value: {
     id: string;
@@ -481,8 +534,21 @@ export interface Api {
   readCrash(value: { id: string; name: string }): Promise<CrashReport>;
   exportCrash(value: { id: string; name: string }): Promise<string | null>;
   saveWorlds(id: string): Promise<SaveMetadata[]>;
+  searchReden(value: {
+    query: string;
+    page: number;
+  }): Promise<{ items: import('./reden').RedenHit[]; more: boolean }>;
+  redenDelivery(file: import('./reden').RedenFile): Promise<{ host: string } | null>;
+  openRedenDownload(file: import('./reden').RedenFile): Promise<void>;
+  redenDetails(key: string): Promise<import('./reden').RedenDetails>;
+  previewReden(file: import('./reden').RedenFile): Promise<import('./reden').RedenPreviewData>;
+  installReden(value: { id: string; file: import('./reden').RedenFile }): Promise<string>;
+  openReden(key: string): Promise<void>;
   scanWorld(value: WorldRef): Promise<SaveScan>;
   worldRegion(value: WorldRegionRef): Promise<SaveRegionView>;
+  worldTerrainTiles(value: TerrainTileRequest): Promise<TerrainTile[]>;
+  planWorldSelection(value: SaveSelectionRequest): Promise<SavePruneReview>;
+  editGameRules(value: WorldRef & { changes: RuleChange[] }): Promise<boolean>;
   planWorldPrune(
     value: WorldRegionRef & {
       indices: number[];
@@ -501,6 +567,11 @@ export interface Api {
   pickResources(): Promise<ResourceCandidate[]>;
   importResources(choices: ResourceImportChoice[]): Promise<ResourceImportResult[]>;
   resources(id: string): Promise<ResourceFile[]>;
+  localResourceCards(value: {
+    id: string;
+    kind: LocalCardKind;
+    names: string[];
+  }): Promise<LocalResourceCard[]>;
   previewResource(value: {
     id: string;
     kind: ResourceKind;
@@ -528,10 +599,14 @@ export interface Api {
   cleanupStorage(): Promise<string | null>;
   restartLauncher(): Promise<void>;
   snapshot(): Promise<Snapshot>;
+  checkLauncherUpdate(): Promise<void>;
+  openLauncherRelease(): Promise<void>;
+  dismissNotification(value: ActivityRef): Promise<void>;
   backgroundImage(): Promise<string | null>;
   pickBackground(): Promise<void>;
   resetBackground(): Promise<void>;
   updateAppearance(value: Pick<Appearance, 'dim' | 'blur'>): Promise<void>;
+  setSidebarOrder(order: SidebarEntry[]): Promise<void>;
   lightweightState(): Promise<LightweightState>;
   setLightweight(active: boolean): Promise<void>;
   settings(value: Settings): Promise<void>;
@@ -597,7 +672,8 @@ export interface Api {
   setGameLayout(value: { id: string; layout: GameLayout }): Promise<void>;
   worlds(id: string): Promise<World[]>;
   backups(id: string): Promise<Backup[]>;
-  backupWorld(value: { id: string; world: string }): Promise<string>;
+  chooseBackupExport(value: WorldRef): Promise<{ path: string; token: string } | null>;
+  backupWorld(value: WorldRef & { exportToken?: string }): Promise<string>;
   restoreBackup(value: { id: string; backupId: string }): Promise<string>;
   deleteBackup(value: { id: string; backupId: string }): Promise<void>;
   loginThirdParty(value: {
@@ -660,6 +736,29 @@ export interface SavePatch {
   spawnY?: number;
   spawnZ?: number;
 }
+export interface TerrainTileRequest extends WorldRef {
+  dimension: string;
+  side: 1 | 8 | 32;
+  regions: { rx: number; rz: number }[];
+}
+export interface TerrainTile {
+  rx: number;
+  rz: number;
+  pixels?: string;
+  error?: string;
+}
+export interface RuleChange {
+  key: string;
+  before: string;
+  value: string;
+}
+export interface SaveSelectionRequest extends WorldRef {
+  dimension: string;
+  groups: { rx: number; rz: number; indices: number[] }[];
+  protectSpawn: number;
+  maxInhabitedTicks?: number;
+  beforeTimestamp?: number;
+}
 export interface SaveMetadata {
   folder: string;
   name?: string;
@@ -672,8 +771,9 @@ export interface SaveMetadata {
   hardcore?: boolean;
   commands?: boolean;
   lastPlayed?: number;
-  spawn?: { x: number | null; y: number | null; z: number | null };
+  spawn?: { x: number | null; y: number | null; z: number | null; dimension?: string };
   rules?: Record<string, string>;
+  ruleError?: string | null;
   error?: string;
 }
 export interface SaveRegion {

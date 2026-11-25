@@ -1,114 +1,3 @@
-.game-library {
-  display: grid;
-  grid-template-columns: 210px minmax(0, 1fr);
-  gap: 24px;
-  align-items: start;
-}
-.game-folders {
-  border-right: 1px solid var(--border, #30302d);
-  padding-right: 14px;
-  min-width: 0;
-}
-.game-folders .nav-caption {
-  padding: 2px 8px 15px;
-}
-.game-folder-row {
-  position: relative;
-}
-.game-folder {
-  width: 100%;
-  display: flex;
-  gap: 12px;
-  text-align: left;
-  padding: 15px 28px 15px 10px;
-  background: transparent;
-  border: 1px solid transparent;
-  margin-bottom: 4px;
-}
-.game-folder.selected {
-  background: #f38a1914;
-  border-color: #f38a1950;
-  color: #f59b36;
-}
-.game-folder svg {
-  flex-shrink: 0;
-  margin-top: 3px;
-}
-.game-folder > span {
-  min-width: 0;
-}
-.game-folder strong,
-.game-folder small {
-  display: block;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-.game-folder small {
-  color: #96968f;
-  font-size: 11px;
-  margin-top: 7px;
-}
-.game-folder-row .remove-folder {
-  position: absolute;
-  right: 0;
-  top: 16px;
-  background: transparent;
-}
-.add-game-folder {
-  margin: 16px 4px;
-  font-size: 12px;
-}
-.game-folder-content {
-  min-width: 0;
-}
-.folder-heading {
-  display: flex;
-  justify-content: space-between;
-  align-items: flex-start;
-  gap: 12px;
-  margin-bottom: 20px;
-}
-.folder-heading h2 {
-  font-size: 17px;
-  margin: 0 0 8px;
-}
-.folder-heading > div {
-  min-width: 0;
-}
-.folder-heading p {
-  margin: 0;
-  font-size: 12px;
-  color: #999990;
-}
-.folder-heading .path-value {
-  padding: 0;
-  border: 0;
-  background: transparent;
-}
-.folder-heading button {
-  flex-shrink: 0;
-}
-.game-folder-content .library-filters {
-  flex-wrap: wrap;
-}
-.game-folder-content .instance-grid {
-  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
-}
-.game-folder-content .instance-card .path-value {
-  display: block;
-  overflow-wrap: anywhere;
-  font-size: 11px;
-  margin-top: 8px;
-}
-.external-location {
-  display: flex;
-  align-items: center;
-  gap: 7px;
-  color: #999990;
-  font-size: 11px;
-  margin-top: 10px;
-}
 .folder-import-versions {
   max-height: 45vh;
   overflow: auto;
@@ -126,9 +15,22 @@
   grid-column: 1 / -1;
   overflow-wrap: anywhere;
 }
-@media (max-width: 1100px) {
-  .game-library {
-    grid-template-columns: 180px minmax(0, 1fr);
-    gap: 16px;
-  }
+.group-combobox {
+  position: relative;
+}
+.group-combobox input {
+  padding-right: 34px;
+}
+.group-combobox > svg {
+  position: absolute;
+  right: 12px;
+  top: 50%;
+  translate: 0 -50%;
+  color: var(--muted);
+  pointer-events: none;
+}
+.group-combobox > .launcher-select-menu {
+  position: absolute;
+  inset: calc(100% + 4px) 0 auto;
+  max-height: 166px;
 }

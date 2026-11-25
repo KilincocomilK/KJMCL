@@ -234,7 +234,7 @@ export function PublishDialog({
                 maxLength={500}
               />
             </Field>
-            <small>导出启用的托管模组与 config，不包含账户、存档和服务器列表。</small>
+            <small>包含已启用的托管模组和 config 目录</small>
             <button
               className="primary"
               disabled={busy || !name.trim() || !version.trim()}
@@ -400,9 +400,7 @@ export function SkinDialog({
             <span>{busy ? '正在读取…' : '尚无皮肤预览'}</span>
           )}
         </div>
-        {account.kind === 'offline' && (
-          <small>离线账户仅保存本地预览，不修改游戏或服务器皮肤。</small>
-        )}
+        {account.kind === 'offline' && <small>离线皮肤仅供本地预览</small>}
         <Field label="模型">
           <Select
             aria-label="模型"

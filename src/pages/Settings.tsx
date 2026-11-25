@@ -1,20 +1,12 @@
 import { useEffect, useState, type CSSProperties } from 'react';
-import {
-  Check,
-  Download,
-  FolderOpen,
-  Image,
-  LoaderCircle,
-  RefreshCw,
-  ShieldCheck,
-  SlidersHorizontal,
-  RotateCcw,
-} from 'lucide-react';
+import { Check, Download, FolderOpen, LoaderCircle, RefreshCw, RotateCcw } from 'lucide-react';
 import type { Snapshot, Settings, JavaRuntime, Appearance } from '../../shared/types';
 import { api } from '../api';
 import { Select } from '../Select';
-import { Brand, Field } from '../components';
-import { type Run, size } from '../ui';
+import { Field } from '../components';
+import { SettingGroup } from '../components/SettingGroup';
+import { LauncherInfo } from '../components/LauncherInfo';
+import { type Run } from '../ui';
 import { DirectoryField } from '../dialogs/AdvancedDialogs';
 import { Integrations } from './Integrations';
 import { StorageSettings } from './Storage';
@@ -50,11 +42,7 @@ function AppearanceSettings({ state, run }: { state: Snapshot; run: Run }) {
     setBusy(false);
   };
   return (
-    <section className="panel setting-section appearance-settings">
-      <div className="section-title">
-        <Image size={19} />
-        <h2>外观</h2>
-      </div>
+    <SettingGroup title="外观" art="sun" className="appearance-settings">
       <div className="appearance-controls">
         <div
           className="appearance-preview"
@@ -74,7 +62,7 @@ function AppearanceSettings({ state, run }: { state: Snapshot; run: Run }) {
             />
           )}
           <span className="appearance-preview-sidebar" />
-          <span className="appearance-preview-panel" />
+          <span className="appearance-preview-button" />
         </div>
         <div className="appearance-options">
           <div className="appearance-actions">
@@ -123,7 +111,7 @@ function AppearanceSettings({ state, run }: { state: Snapshot; run: Run }) {
           </Field>
         </div>
       </div>
-    </section>
+    </SettingGroup>
   );
 }
 export function SettingsPage({ state, run }: { state: Snapshot; run: Run }) {
@@ -139,18 +127,19 @@ export function SettingsPage({ state, run }: { state: Snapshot; run: Run }) {
   const patch = (v: Partial<Settings>) => set({ ...s, ...v });
   return (
     <form
-      className="settings-form"
+      className="settings-form single-page launcher-settings"
+      onInvalidCapture={(e) => {
+        const group = (e.target as HTMLElement).closest('details');
+        if (group) group.open = true;
+      }}
       onSubmit={(e) => {
         e.preventDefault();
         void run(() => api.settings(s), '设置已保存');
       }}
     >
+      <LauncherInfo state={state} run={run} />
       <AppearanceSettings state={state} run={run} />
-      <section className="panel setting-section">
-        <div className="section-title">
-          <SlidersHorizontal size={19} />
-          <h2>游戏运行</h2>
-        </div>
+      <SettingGroup title="游戏运行" art="block">
         <div className="form-grid">
           <Field label="默认内存">
             <div className="range-value">
@@ -215,98 +204,84 @@ export function SettingsPage({ state, run }: { state: Snapshot; run: Run }) {
         <div className="row java-install">
           <small>安装 Java</small>
           {[8, 16, 17, 21, 25].map((v) => (
-            <button
-              type="button"
-              key={v}
-              onClick={() => void run(() => api.installJava(v), '已加入下载任务')}
-            >
+            <button type="button" key={v} onClick={() => void run(() => api.installJava(v))}>
               <Download size={14} />
               {v}
             </button>
           ))}
         </div>
-      </section>
-      <div className="settings-grid">
-        <section className="panel setting-section">
-          <div className="section-title">
-            <Download size={19} />
-            <h2>下载与网络</h2>
-          </div>
-          <Field label="下载源">
-            <Select
-              value={s.source}
-              onChange={(e) => patch({ source: e.target.value as Settings['source'] })}
-            >
-              <option value="official">官方源</option>
-              <option value="bmclapi">BMCLAPI 镜像</option>
-            </Select>
-          </Field>
-          <Field label="HTTP 代理">
-            <input
-              placeholder="http://127.0.0.1:7890"
-              value={s.proxy}
-              onChange={(e) => patch({ proxy: e.target.value })}
-            />
-          </Field>
-          <Field label="并发下载数">
-            <input
-              type="number"
-              min={1}
-              max={16}
-              value={s.concurrency}
-              onChange={(e) => patch({ concurrency: Number(e.target.value) })}
-            />
-          </Field>
-          <label className="check">
-            <input
-              type="checkbox"
-              checked={s.showSnapshots}
-              onChange={(e) => patch({ showSnapshots: e.target.checked })}
-            />
-            默认显示快照版本
-          </label>
-        </section>
-        <section className="panel setting-section">
-          <div className="section-title">
-            <ShieldCheck size={19} />
-            <h2>账户与存储</h2>
-          </div>
-          <Field label="Microsoft Client ID">
-            <input
-              placeholder="应用注册的客户端 ID"
-              value={s.microsoftClientId}
-              onChange={(e) => patch({ microsoftClientId: e.target.value })}
-            />
-          </Field>
-          <StorageSettings state={state} run={run} />
-          <DirectoryField
-            label="默认实例根目录"
-            value={s.instancesDir ?? ''}
-            onChange={(v) => patch({ instancesDir: v })}
+      </SettingGroup>
+      <SettingGroup title="下载与网络" art="hopper">
+        <Field label="下载源">
+          <Select
+            value={s.source}
+            onChange={(e) => patch({ source: e.target.value as Settings['source'] })}
+          >
+            <option value="official">官方源</option>
+            <option value="bmclapi">BMCLAPI 镜像</option>
+          </Select>
+        </Field>
+        <Field label="HTTP 代理">
+          <input
+            placeholder="http://127.0.0.1:7890"
+            value={s.proxy}
+            onChange={(e) => patch({ proxy: e.target.value })}
           />
-          <label className="check">
-            <input
-              type="checkbox"
-              checked={s.backupBeforeLaunch ?? false}
-              onChange={(e) => patch({ backupBeforeLaunch: e.target.checked })}
-            />
-            启动前自动备份存档
-          </label>
-          <div className="about">
-            <Brand small />
-            <span>
-              KJMCL <strong>{state.appVersion}</strong>
-            </span>
-          </div>
-        </section>
-      </div>
-      <div className="settings-save">
-        <button className="primary">
-          <Check size={16} />
-          保存设置
-        </button>
-      </div>
+        </Field>
+        <Field label="并发下载数">
+          <input
+            type="number"
+            min={1}
+            max={16}
+            value={s.concurrency}
+            onChange={(e) => patch({ concurrency: Number(e.target.value) })}
+          />
+        </Field>
+        <label className="check">
+          <input
+            type="checkbox"
+            checked={s.showSnapshots}
+            onChange={(e) => patch({ showSnapshots: e.target.checked })}
+          />
+          默认显示快照版本
+        </label>
+      </SettingGroup>
+      <SettingGroup
+        title="账户与存储"
+        art="chest"
+        open={Boolean(state.storage?.pendingRestart || state.storage?.retired)}
+      >
+        <Field label="Microsoft Client ID">
+          <input
+            placeholder="应用注册的客户端 ID"
+            value={s.microsoftClientId}
+            onChange={(e) => patch({ microsoftClientId: e.target.value })}
+          />
+        </Field>
+        <StorageSettings state={state} run={run} />
+        <DirectoryField
+          label="默认实例根目录"
+          value={s.instancesDir ?? ''}
+          onChange={(v) => patch({ instancesDir: v })}
+        />
+        <label className="check">
+          <input
+            type="checkbox"
+            checked={s.backupBeforeLaunch ?? false}
+            onChange={(e) => patch({ backupBeforeLaunch: e.target.checked })}
+          />
+          启动前自动备份存档
+        </label>
+      </SettingGroup>
       <Integrations state={state} run={run} />
+      {JSON.stringify(s) !== JSON.stringify(state.settings) && (
+        <div className="settings-save">
+          <button className="primary">
+            <Check size={16} />
+            保存设置
+          </button>
+        </div>
+      )}
     </form>
   );
 }

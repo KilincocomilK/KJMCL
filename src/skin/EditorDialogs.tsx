@@ -1,3 +1,4 @@
+import { matchesSearch } from '../../shared/search';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import type { RGBA, SkinResolution } from '../../shared/skin';
 import { resizePixels } from '../../shared/skin-pixels';
@@ -231,11 +232,7 @@ export function ShortcutDialog({
     [error, setError] = useState('');
   const entries = useMemo(
     () =>
-      tools.filter((t) =>
-        (t.label + t.id + (workspace.shortcuts[t.id] ?? t.key))
-          .toLowerCase()
-          .includes(query.toLowerCase()),
-      ),
+      tools.filter((t) => matchesSearch(query, t.label, t.id, workspace.shortcuts[t.id] ?? t.key)),
     [query, workspace.shortcuts],
   );
   return (
@@ -387,7 +384,6 @@ export function AnimationDialog({
             ))}
           </Select>
         </Field>
-        <p className="muted">使用当前姿势与转台设置，导出 GIF。</p>
         {busy && <progress aria-label="渲染动画" value={progress} max={100} />}
         {error && (
           <p role="alert" className="inline-error">

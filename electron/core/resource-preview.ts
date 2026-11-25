@@ -1,13 +1,17 @@
 import { readFile } from 'node:fs/promises';
 import { gunzipSync } from 'node:zlib';
-import { openPromise } from 'yauzl';
+import { openPromise, type Entry } from 'yauzl';
 import { inside } from './files';
 import type { ResourcePreview } from '../../shared/types';
 
 // Only bounded metadata is decompressed; recordings and pack assets stay on disk.
-export async function zipMetadata(file: string) {
-  const zip = await openPromise(file, { strictFileNames: true });
-  const data = new Map<string, Buffer>();
+export async function withZipMetadata<T>(
+  file: string,
+  select: (name: string) => boolean,
+  inspect: (names: Set<string>, read: (name: string) => Promise<Buffer | undefined>) => Promise<T>,
+) {
+  const zip = await openPromise(file, { strictFileNames: true, autoClose: false });
+  const entries = new Map<string, Entry>();
   const names = new Set<string>();
   let count = 0,
     bytes = 0,
@@ -20,22 +24,12 @@ export async function zipMetadata(file: string) {
       if (((entry.externalFileAttributes >>> 16) & 0xf000) === 0xa000)
         throw new Error('压缩包含有符号链接');
       names.add(entry.fileName);
-      if (
-        ![
-          'fabric.mod.json',
-          'quilt.mod.json',
-          'META-INF/mods.toml',
-          'META-INF/neoforge.mods.toml',
-          'pack.mcmeta',
-          'pack.png',
-          'metaData.json',
-          'thumb',
-          'thumb.jpg',
-          'thumbnail.png',
-        ].includes(entry.fileName)
-      )
-        continue;
-      if (entry.uncompressedSize > 4 * 1024 ** 2) continue;
+      if (entry.uncompressedSize <= 4 * 1024 ** 2 && select(entry.fileName))
+        entries.set(entry.fileName, entry);
+    }
+    return await inspect(names, async (name) => {
+      const entry = entries.get(name);
+      if (!entry) return undefined;
       const chunks: Buffer[] = [];
       let length = 0;
       for await (const chunk of await zip.openReadStreamPromise(entry)) {
@@ -44,12 +38,37 @@ export async function zipMetadata(file: string) {
         if (length > 4 * 1024 ** 2 || metadataBytes > 16 * 1024 ** 2) throw new Error('元数据过大');
         chunks.push(chunk);
       }
-      data.set(entry.fileName, Buffer.concat(chunks));
-    }
+      return Buffer.concat(chunks);
+    });
   } finally {
     zip.close();
   }
-  return { names, data };
+}
+const previewEntries = [
+  'fabric.mod.json',
+  'quilt.mod.json',
+  'META-INF/mods.toml',
+  'META-INF/neoforge.mods.toml',
+  'pack.mcmeta',
+  'pack.png',
+  'metaData.json',
+  'thumb',
+  'thumb.jpg',
+  'thumbnail.png',
+];
+export function zipMetadata(file: string) {
+  return withZipMetadata(
+    file,
+    (name) => previewEntries.includes(name),
+    async (names, read) => {
+      const data = new Map<string, Buffer>();
+      for (const name of previewEntries) {
+        const value = await read(name);
+        if (value) data.set(name, value);
+      }
+      return { names, data };
+    },
+  );
 }
 export function metadataJson(data: Map<string, Buffer>, name: string): any {
   const value = data.get(name);

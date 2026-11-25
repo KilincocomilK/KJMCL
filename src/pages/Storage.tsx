@@ -5,7 +5,7 @@ import { Field, Modal } from '../components';
 import { size, type Run } from '../ui';
 async function choose(run: Run) {
   const directory = await run(() => api.pickDirectory());
-  if (directory) await run(() => api.migrateStorage(directory), '正在复制并校验数据');
+  if (directory) await run(() => api.migrateStorage(directory));
 }
 export function StorageSettings({ state, run }: { state: Snapshot; run: Run }) {
   const info = state.storage,
@@ -71,7 +71,7 @@ export function StorageSetup({ state, run }: { state: Snapshot; run: Run }) {
   return (
     <Modal title="选择数据目录" onClose={() => void run(() => api.window('close'))}>
       <div className="form-body">
-        <p>游戏、模组、Java 和备份将存放在这里。可选择其他磁盘。</p>
+        <p>用于存放游戏、模组、Java 和备份。</p>
         <div className="path-value">{pending || state.dataPath}</div>
         {busy && <p>正在复制并校验…</p>}
       </div>

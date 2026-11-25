@@ -55,6 +55,7 @@ export function SkinAtlas(props: SkinAtlasProps) {
     if (!element || !c) return;
     const ctx = c.getContext('2d');
     if (!ctx) return;
+    const labelFont = `12px ${getComputedStyle(c).fontFamily}`;
     const image = document.createElement('canvas');
     image.width = props.resolution;
     image.height = props.resolution;
@@ -158,13 +159,13 @@ export function SkinAtlas(props: SkinAtlasProps) {
           ctx.strokeStyle = face.surface === 'base' ? '#80b6cfbb' : '#d39859bb';
           ctx.lineWidth = 1 / s;
           ctx.strokeRect(face.x, face.y, face.width, face.height);
-          if (face.width * s >= 32 && face.height * s >= 16) {
+          if (face.width * s >= 36 && face.height * s >= 16) {
             ctx.save();
             ctx.translate(face.x + face.width / 2, face.y + face.height / 2);
             ctx.scale(1 / s, 1 / s);
             ctx.textAlign = 'center';
             ctx.textBaseline = 'middle';
-            ctx.font = '10px sans-serif';
+            ctx.font = labelFont;
             ctx.lineWidth = 3;
             ctx.strokeStyle = '#000b';
             ctx.fillStyle = '#fff9';
@@ -191,6 +192,7 @@ export function SkinAtlas(props: SkinAtlasProps) {
       if (!frame) frame = requestAnimationFrame(draw);
     };
     update.current = requestDraw;
+    void document.fonts.ready.then(() => update.current?.());
     const fit = () => {
       const scale = Math.max(
         0.25,

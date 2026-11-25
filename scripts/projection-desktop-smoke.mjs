@@ -119,6 +119,8 @@ try {
   await work().getByRole('button', { name: '打开投影', exact: true }).first().click();
   await expect.poll(async () => (await state()).current?.nonAir, { timeout: 30000 }).toBe(101);
   await rendered();
+  const gridBox = await work().getByRole('checkbox', { name: '网格', exact: true }).boundingBox();
+  expect(gridBox.height).toBe(gridBox.width);
   let doc = (await state()).current;
   expect(doc.dimensions).toEqual([8, 5, 7]);
   expect(dataStates(doc)).toEqual(states(readProjection(await readFile(files.litematic))));

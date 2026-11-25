@@ -1,12 +1,71 @@
 import type { LightweightState } from '../shared/types';
+import { noticeDuration } from '../shared/activity';
+import { remainingTime, taskStatus } from './ui';
 import './lightweight.css';
 
 const api = window.kjmcl!;
 const notice = document.querySelector<HTMLElement>('#notice')!;
 let noticeTimer: ReturnType<typeof setTimeout> | undefined;
 let windowVisible = false;
+const activityCard = document.querySelector<HTMLElement>('#activity')!;
+const activityDetails = activityCard.querySelector('details')!;
+const releaseButton = document.querySelector<HTMLButtonElement>('#release')!;
+let activity: LightweightState['activity'];
+let activityTimer: ReturnType<typeof setTimeout> | undefined;
+let activityKey = '';
+
+async function dismissActivity() {
+  if (!activity) return;
+  await api.dismissNotification(
+    'task' in activity ? { taskId: activity.task.id } : { version: activity.version },
+  );
+  renderActivity((await api.lightweightState()).activity);
+}
+function timeActivity() {
+  clearTimeout(activityTimer);
+  if (
+    windowVisible &&
+    activity &&
+    'task' in activity &&
+    activity.task.status !== 'running' &&
+    !activityCard.matches(':hover, :focus-within')
+  ) {
+    activityTimer = setTimeout(() => void run(dismissActivity), noticeDuration);
+  }
+}
+function renderActivity(next: LightweightState['activity']) {
+  activity = next;
+  activityCard.hidden = !next;
+  const key = next && ('task' in next ? next.task.id : next.version);
+  if (key !== activityKey) activityDetails.open = false;
+  activityKey = key ?? '';
+  if (!next) return;
+  const task = 'task' in next ? next.task : undefined;
+  const running = task?.status === 'running';
+  activityCard.querySelector('strong')!.textContent = task?.title ?? '启动器有更新';
+  activityCard.querySelector('small')!.textContent = task
+    ? running
+      ? `${remainingTime(task.remainingSeconds)} · ${Math.floor(task.progress)}%`
+      : taskStatus[task.status]
+    : 'KJMCL v' + ('version' in next ? next.version : '');
+  const detail = activityCard.querySelector('p')!;
+  detail.hidden = !task;
+  detail.textContent = task?.detail ?? '';
+  releaseButton.hidden = !!task;
+  const progress = activityCard.querySelector('progress')!;
+  progress.hidden = !running;
+  if (task?.progress) progress.value = task.progress;
+  else progress.removeAttribute('value');
+  timeActivity();
+}
+document.querySelector<HTMLButtonElement>('#dismiss-activity')!.onclick = () =>
+  void run(dismissActivity);
+releaseButton.onclick = () => void run(() => api.openLauncherRelease());
+for (const event of ['mouseenter', 'mouseleave', 'focusin', 'focusout'])
+  activityCard.addEventListener(event, timeActivity);
 function visibility(visible: boolean) {
   windowVisible = visible;
+  timeActivity();
   clearTimeout(noticeTimer);
   if (visible && !notice.hidden) noticeTimer = setTimeout(() => (notice.hidden = true), 6000);
 }
@@ -26,6 +85,7 @@ async function run(work: () => Promise<unknown>) {
 }
 function render(state: LightweightState) {
   visibility(state.visible);
+  renderActivity(state.activity);
   const list = document.querySelector('#games')!;
   list.replaceChildren(
     ...state.games.map((game) => {

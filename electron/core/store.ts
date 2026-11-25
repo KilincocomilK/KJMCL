@@ -8,6 +8,7 @@ import {
   realpathSync,
 } from 'node:fs';
 import path from 'node:path';
+import { DEFAULT_SIDEBAR_ORDER, type SidebarEntry } from '../../shared/navigation';
 import type {
   Account,
   Instance,
@@ -22,10 +23,34 @@ import {
   favoriteSchema,
   gameFolderSchema,
   appearanceSchema,
+  sidebarOrderSchema,
 } from '../../shared/schema';
 import { z } from 'zod';
+export const STATE_VERSION = 9;
+
+export function supportsStateVersion(value: unknown) {
+  return (
+    typeof value === 'number' && Number.isInteger(value) && value >= 1 && value <= STATE_VERSION
+  );
+}
+
+function readSidebarOrder(version: number, value: unknown): SidebarEntry[] {
+  if (version < 8) return [...DEFAULT_SIDEBAR_ORDER];
+  if (version === 8) {
+    const previous = z
+      .array(z.string())
+      .length(DEFAULT_SIDEBAR_ORDER.length + 2)
+      .parse(value);
+    if (!previous.includes('settings') || !previous.includes('accounts'))
+      throw new Error('侧栏顺序不完整');
+    value = previous.filter((key) => key !== 'settings' && key !== 'accounts');
+  }
+  return sidebarOrderSchema.parse(value);
+}
+
 interface Data {
-  schemaVersion: 7;
+  schemaVersion: typeof STATE_VERSION;
+  sidebarOrder: SidebarEntry[];
   appearance: Appearance;
   gameFolders: GameFolder[];
   selectedGameFolderId?: string;
@@ -45,7 +70,8 @@ export class Store {
     root = this.root;
     this.file = path.join(root, 'state.json');
     this.data = {
-      schemaVersion: 7,
+      schemaVersion: STATE_VERSION,
+      sidebarOrder: [...DEFAULT_SIDEBAR_ORDER],
       appearance: { dim: 32, blur: 0 },
       gameFolders: [],
       favorites: [],
@@ -55,7 +81,7 @@ export class Store {
         memoryMb: 4096,
         javaPath: '',
         proxy: '',
-        source: 'official',
+        source: 'bmclapi',
         concurrency: 6,
         microsoftClientId: '',
         closeOnLaunch: false,
@@ -64,9 +90,9 @@ export class Store {
     };
     if (existsSync(this.file)) {
       const loaded = JSON.parse(readFileSync(this.file, 'utf8')) as Data;
-      if (![1, 2, 3, 4, 5, 6, 7].includes(loaded.schemaVersion))
+      if (!supportsStateVersion(loaded.schemaVersion))
         throw new Error('不支持的数据格式，请使用匹配的 KJMCL 版本');
-      const migrating = Number(loaded.schemaVersion) < 7;
+      const migrating = Number(loaded.schemaVersion) < STATE_VERSION;
       if (migrating) copyFileSync(this.file, this.file + `.v${loaded.schemaVersion}.bak`);
       loaded.favorites =
         Number(loaded.schemaVersion) < 4
@@ -76,10 +102,12 @@ export class Store {
         Number(loaded.schemaVersion) < 5
           ? []
           : z.array(gameFolderSchema).max(1000).parse(loaded.gameFolders);
-      loaded.appearance = Number(loaded.schemaVersion) < 6
-        ? { dim: 32, blur: 0 }
-        : appearanceSchema.parse(loaded.appearance);
-      loaded.schemaVersion = 7;
+      loaded.appearance =
+        Number(loaded.schemaVersion) < 6
+          ? { dim: 32, blur: 0 }
+          : appearanceSchema.parse(loaded.appearance);
+      loaded.sidebarOrder = readSidebarOrder(loaded.schemaVersion, loaded.sidebarOrder);
+      loaded.schemaVersion = STATE_VERSION;
       loaded.settings = settingsSchema.parse(loaded.settings);
       loaded.instances = loaded.instances.map((v) => {
         if (
@@ -110,6 +138,16 @@ export class Store {
     if (existsSync(this.file)) copyFileSync(this.file, this.file + '.bak');
     writeFileSync(this.file + '.tmp', JSON.stringify(this.data, null, 2));
     renameSync(this.file + '.tmp', this.file);
+  }
+  setSidebarOrder(order: SidebarEntry[]) {
+    const previous = this.data.sidebarOrder;
+    this.data.sidebarOrder = sidebarOrderSchema.parse(order);
+    try {
+      this.save();
+    } catch (err) {
+      this.data.sidebarOrder = previous;
+      throw err;
+    }
   }
   instance(id: string) {
     const i = this.data.instances.find((x) => x.id === id);

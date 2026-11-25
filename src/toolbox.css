@@ -2,61 +2,69 @@
   min-width: 0;
   width: 100%;
 }
-.toolbox-page[hidden] {
-  display: none;
-}
 .toolbox-grid {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 18px;
-  max-width: 1020px;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: clamp(12px, 2vw, 24px);
 }
 .toolbox-card {
+  --tile: #293b40;
+  --grid: #a2cdd116;
   display: flex;
-  align-items: center;
-  gap: 20px;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 0;
+  padding: 0;
+  min-width: 0;
   text-align: left;
-  min-height: 150px;
-  padding: 26px;
-  background: #151616bb;
-  border: 1px solid #ffffff19;
+  border: 2px solid #131612;
+  color: var(--paper);
+  box-shadow: 0 3px #101310;
 }
-.toolbox-card:hover {
-  border-color: #f26b2177;
-  background: #f26b210a;
+.tool-skin-editor {
+  --tile: #40332f;
+  --grid: #e7b99514;
 }
-.toolbox-card > svg:first-child {
-  color: #f98a49;
-  flex-shrink: 0;
+.tool-seed-map {
+  --tile: #333b2d;
+  --grid: #c6d99815;
 }
-.toolbox-card > span {
+.tool-art {
   display: grid;
-  gap: 10px;
-  flex: 1;
+  place-items: center;
+  height: clamp(144px, 18vw, 220px);
+  background-color: var(--tile);
+  background-image:
+    linear-gradient(var(--grid) 1px, transparent 1px),
+    linear-gradient(90deg, var(--grid) 1px, transparent 1px);
+  background-size: 20px 20px;
+  box-shadow: inset 0 2px #ffffff12;
 }
-.toolbox-card strong {
-  font-size: 19px;
-  color: #e9e8e6;
+.tool-art .item-art {
+  filter: drop-shadow(4px 6px 0 #12151166);
+  transition: transform 170ms var(--press);
 }
-.toolbox-card small {
-  font-size: 12px;
-  color: #999a98;
+.toolbox-card:hover .tool-art .item-art {
+  transform: translateY(-4px) rotate(-3deg);
 }
-.toolbox-navigation {
+.tool-label {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 12px;
+  gap: 6px;
+  padding: 16px 18px;
+  background: var(--stone);
+  box-shadow: var(--edge);
+}
+.tool-label strong {
+  font: 20px/1.4 var(--pixel);
+}
+.tool-label svg {
+  color: var(--orange);
+}
+.toolbox-navigation {
   margin-bottom: 14px;
 }
 .toolbox-navigation > button {
   font-size: 12px;
-}
-@media (max-width: 1000px) {
-  .toolbox-grid {
-    grid-template-columns: 1fr;
-  }
-  .toolbox-card {
-    min-height: 130px;
-  }
 }

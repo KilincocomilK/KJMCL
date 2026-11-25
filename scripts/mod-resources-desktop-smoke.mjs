@@ -18,8 +18,17 @@ const data = path.join(root, 'data'),
 const fixture = new AdmZip();
 fixture.addFile(
   'fabric.mod.json',
-  Buffer.from(JSON.stringify({ id: 'example', version: '1', depends: { minecraft: '1.21.1' } })),
+  Buffer.from(
+    JSON.stringify({
+      id: 'sodium',
+      name: 'Sodium',
+      version: '0.6.13',
+      icon: 'assets/sodium/logo.png',
+      depends: { minecraft: '1.21.1' },
+    }),
+  ),
 );
+fixture.addFile('assets/sodium/logo.png', await readFile('build/icon.png'));
 const bytes = fixture.toBuffer(),
   hash = createHash('sha512').update(bytes).digest('hex');
 await writeFile(path.join(root, 'example.jar'), bytes);
@@ -36,7 +45,7 @@ pool.intercept({path:p=>p.startsWith('/v2/search?') && new URL(p,'https://api.mo
  .reply(200,{hits:[{...hit,title:'Late Result'}],total_hits:1}).delay(1200);
 pool.intercept({path:/^\\/v2\\/search\\?/, method:'GET'}).reply(200, ({path})=>{
  const p = new URL(path, 'https://api.modrinth.com').searchParams;
- globalThis.searchRequests.push({query:p.get('query'), facets:JSON.parse(p.get('facets')), offset:p.get('offset')});
+ globalThis.searchRequests.push({query:p.get('query'), facets:JSON.parse(p.get('facets')), offset:p.get('offset'), sort:p.get('index')});
  return {hits:p.get('query')==='empty'?[]:[hit],total_hits:p.get('query')==='empty'?0:1};
 }).persist();
 pool.intercept({path:/^\\/v2\\/project\\/example\\/version\\?/,method:'GET'}).reply(200,[{
@@ -76,26 +85,70 @@ try {
   for (const name of ['本地资源', '模组管理', '内容发现', '发现模组'])
     await expect(page.getByText(name, { exact: true })).toHaveCount(0);
   await expect(page.getByRole('tab', { name: /^模组/ })).toHaveAttribute('aria-selected', 'true');
-  const input = page.getByLabel('搜索模组', { exact: true });
-  await input.fill('example');
+  const input = page.getByLabel('搜索在线模组', { exact: true });
+  const selector = await page.getByRole('combobox', { name: '选择实例' }).boundingBox();
+  const firstTab = await page.getByRole('tab', { name: /^模组/ }).boundingBox();
+  expect(selector.y + selector.height).toBeLessThan(firstTab.y);
+  await input.fill('钠 Sodium');
   await input.press('Enter');
-  const results = page.getByRole('region', { name: '模组搜索结果' });
+  const results = page.getByRole('region', { name: '在线模组' });
   await expect(results.getByText('Example Mod', { exact: true })).toBeVisible();
   expect((await app.evaluate(() => globalThis.searchRequests))[0].facets).toEqual([
     ['project_type:mod'],
     ['versions:1.21.1'],
     ['categories:fabric'],
   ]);
+  expect((await app.evaluate(() => globalThis.searchRequests))[0].query).toBe('sodium');
+  await selectLauncherOption(page, '内容排序', 'downloads');
+  await expect
+    .poll(() => app.evaluate(() => globalThis.searchRequests.at(-1).sort))
+    .toBe('downloads');
+  await app.evaluate(({ shell }) => {
+    shell.openExternal = async (url) => {
+      globalThis.openedProject = url;
+    };
+  });
+  await results.getByRole('button', { name: '打开发布页 Example Mod' }).click();
+  expect(await app.evaluate(() => globalThis.openedProject)).toBe(
+    'https://modrinth.com/mod/example',
+  );
   await results.getByRole('button', { name: '安装', exact: true }).click();
   await expect(results.getByRole('button', { name: '下载中', exact: true })).toBeDisabled();
   await expect(results.getByRole('button', { name: '已安装', exact: true })).toBeDisabled({
     timeout: 15000,
   });
   expect(await readFile(path.join(data, 'instances', id, 'mods', 'example.jar'))).toEqual(bytes);
+  const activity = page.locator('.activity-stack .activity-card').first();
+  await activity.hover();
+  const noticeBounds = await activity.boundingBox();
+  for (const label of ['刷新资源', '导出清单']) {
+    const control = page.getByRole('button', { name: label, exact: true });
+    const box = await control.boundingBox();
+    expect(
+      box.x + box.width <= noticeBounds.x || box.y >= noticeBounds.y + noticeBounds.height,
+    ).toBe(true);
+  }
+  await page.getByRole('button', { name: '刷新资源' }).click();
   const installed = page.getByRole('region', { name: '已安装模组' });
   await expect(installed.getByText('example.jar', { exact: true })).toBeVisible();
-  await installed.getByRole('switch').click();
-  await expect(installed.getByRole('switch')).toHaveAttribute('aria-checked', 'false');
+  await expect(installed.getByText('Sodium', { exact: true })).toBeVisible();
+  await expect(installed.getByText('0.6.13', { exact: true })).toBeVisible();
+  await expect(installed.locator('.local-resource-art img')).toHaveJSProperty('naturalWidth', 64);
+  const local = page.getByLabel('搜索本地模组');
+  await local.fill('Ｓｏｄｉｕｍ 钠 0.6.13');
+  await expect(installed.getByRole('switch')).toBeVisible();
+  await local.fill('无匹配');
+  await expect(installed.getByRole('switch')).toHaveCount(0);
+  await expect(results.getByText('Example Mod', { exact: true })).toBeVisible();
+  await input.fill('独立的在线搜索');
+  await local.fill('钠');
+  const toggle = installed.getByRole('switch');
+  const track = await toggle.locator('.switch-track').boundingBox();
+  expect(track.width / track.height).toBeGreaterThanOrEqual(1.6);
+  expect((await toggle.boundingBox()).height).toBeLessThanOrEqual(track.height + 8);
+  await toggle.click();
+  await expect(toggle).toHaveAttribute('aria-checked', 'false');
+  await expect(installed.locator('small')).toHaveCSS('font-family', /Fusion Pixel/);
   expect(await readFile(path.join(data, 'instances', id, 'mods', 'example.jar.disabled'))).toEqual(
     bytes,
   );
@@ -119,24 +172,24 @@ try {
   await input.fill('slow');
   await input.press('Enter');
   await selectLauncherOption(page, '选择实例', other);
-  await expect(page.getByLabel('搜索模组', { exact: true })).toHaveValue('');
+  await expect(page.getByLabel('搜索在线模组', { exact: true })).toHaveValue('');
   await page.waitForTimeout(1400);
   await expect(page.getByText('Late Result', { exact: true })).toHaveCount(0);
   await expect(page.getByRole('switch')).toHaveCount(0);
-  await page.getByLabel('搜索模组', { exact: true }).fill('example');
-  await page.getByLabel('搜索模组', { exact: true }).press('Enter');
+  await page.getByLabel('搜索在线模组', { exact: true }).fill('example');
+  await page.getByLabel('搜索在线模组', { exact: true }).press('Enter');
   await expect(results.getByText('Example Mod', { exact: true })).toBeVisible();
   expect((await app.evaluate(() => globalThis.searchRequests)).at(-1).facets).toEqual([
     ['project_type:mod'],
     ['versions:1.20.1'],
     ['categories:forge'],
   ]);
-  await selectLauncherOption(page, '模组来源', 'curseforge');
-  await expect(results).toHaveCount(0);
-  await selectLauncherOption(page, '模组来源', 'modrinth');
-  await page.getByLabel('搜索模组', { exact: true }).fill('empty');
-  await page.getByLabel('搜索模组', { exact: true }).press('Enter');
-  await expect(page.getByText('没有找到兼容模组', { exact: true })).toBeVisible();
+  await selectLauncherOption(page, '内容来源', 'curseforge');
+  await expect(results.getByRole('article')).toHaveCount(0);
+  await selectLauncherOption(page, '内容来源', 'modrinth');
+  await page.getByLabel('搜索在线模组', { exact: true }).fill('empty');
+  await page.getByLabel('搜索在线模组', { exact: true }).press('Enter');
+  await expect(page.getByText('没有找到兼容内容', { exact: true })).toBeVisible();
   expect(errors).toEqual([]);
   console.log(
     'PASS unified resource UI, instance-filtered search, real verified fixture download via mocked HTTP, install refresh, duplicate prevention, toggling, stale-result rejection, source switch and compact layout (no live provider acceptance)',

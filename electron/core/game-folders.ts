@@ -3,6 +3,7 @@ import os from 'node:os';
 import { lstat, readFile, readdir, realpath } from 'node:fs/promises';
 import { randomUUID } from 'node:crypto';
 import type { Store } from './store';
+import type { Work } from './tasks';
 import { inside, exists } from './files';
 import { mergeVersions, type Version } from './minecraft';
 import { clientVersion } from './client-version';
@@ -182,7 +183,7 @@ export class GameFolders {
     if (!(await lstat(selected)).isDirectory()) throw new Error('运行目录不是文件夹');
     if (!within(root, selected)) await this.safeRoot(selected);
   }
-  private async entries(root: string, layouts = new Map<string, GameLayout>()) {
+  private async entries(root: string, layouts = new Map<string, GameLayout>(), ctx?: Work) {
     const versions = path.join(root, 'versions');
     await checkGamePath(versions);
     const names = (await readdir(versions, { withFileTypes: true }))
@@ -191,7 +192,9 @@ export class GameFolders {
       .sort((a, b) => a.localeCompare(b));
     if (names.length > 2000) throw new Error('版本目录超过 2000 个，请分文件夹管理');
     const out: Entry[] = [];
-    for (const versionId of names) {
+    for (const [index, versionId] of names.entries()) {
+      ctx?.signal.throwIfAborted();
+      ctx?.progress((98 * index) / names.length, versionId);
       if (!(await exists(inside(root, `versions/${versionId}/${versionId}.json`)))) continue;
       const layout = layouts.get(versionId) ?? 'auto';
       const entry: Entry = { id: versionId, name: versionId, layout, gameDir: root };
@@ -223,7 +226,7 @@ export class GameFolders {
     this.selections.set(selectionId, { root, entries, expires: Date.now() + 10 * 60_000 });
     return { selectionId, root, versions: entries };
   }
-  async add(value: Parameters<Api['importMinecraft']>[0]) {
+  async add(value: Parameters<Api['importMinecraft']>[0], ctx?: Work) {
     const ticket = this.selections.get(value.selectionId);
     if (!ticket || ticket.expires < Date.now()) throw new Error('目录预览已过期，请重新选择');
     if (value.layouts.some((l) => !ticket.entries.some((e) => e.id === l.versionId)))
@@ -241,6 +244,7 @@ export class GameFolders {
     const entries = await this.entries(
       root,
       new Map(value.layouts.map((l) => [l.versionId, l.layout])),
+      ctx,
     );
     // The displayed custom working directories must not change between preview and confirmation.
     for (const entry of entries) {
@@ -249,6 +253,8 @@ export class GameFolders {
         throw new Error('游戏配置已变化，请重新预览');
     }
     await this.safeRoot(root, true);
+    ctx?.signal.throwIfAborted();
+    ctx?.progress(98, '保存实例索引');
     if (!existing) this.store.data.gameFolders.push(folder);
     this.commit(folder, entries);
     this.selections.delete(value.selectionId);

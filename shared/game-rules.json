@@ -1,0 +1,449 @@
+[
+  {
+    "legacy": "keepInventory",
+    "modern": "minecraft:keep_inventory",
+    "name": "死亡保留物品",
+    "description": "死亡时保留背包物品和经验。",
+    "default": false
+  },
+  {
+    "legacy": "mobGriefing",
+    "modern": "minecraft:mob_griefing",
+    "name": "生物破坏地形",
+    "description": "允许苦力怕爆炸、末影人搬运方块等行为改变地形。",
+    "default": true
+  },
+  {
+    "legacy": "doDaylightCycle",
+    "modern": "minecraft:advance_time",
+    "name": "昼夜交替",
+    "description": "时间自然推移，太阳和月亮随之移动。",
+    "default": true
+  },
+  {
+    "legacy": "doWeatherCycle",
+    "modern": "minecraft:advance_weather",
+    "name": "天气变化",
+    "description": "天气可自然切换为晴天、降雨或雷暴。",
+    "default": true
+  },
+  {
+    "legacy": "doMobSpawning",
+    "modern": "minecraft:spawn_mobs",
+    "name": "生物自然生成",
+    "description": "允许生物在世界中自然生成。",
+    "default": true
+  },
+  {
+    "legacy": "randomTickSpeed",
+    "modern": "minecraft:random_tick_speed",
+    "name": "随机刻速度",
+    "description": "每个区段每游戏刻的随机刻次数，影响作物生长等过程。",
+    "default": 3
+  },
+  {
+    "legacy": "naturalRegeneration",
+    "modern": "minecraft:natural_health_regeneration",
+    "name": "自然恢复生命",
+    "description": "饥饿值足够时，玩家能自然恢复生命。",
+    "default": true
+  },
+  {
+    "legacy": "doMobLoot",
+    "modern": "minecraft:mob_drops",
+    "name": "生物掉落",
+    "description": "生物死亡时掉落战利品。",
+    "default": true
+  },
+  {
+    "legacy": "doTileDrops",
+    "modern": "minecraft:block_drops",
+    "name": "方块掉落",
+    "description": "方块被破坏时可以掉落物品。",
+    "default": true
+  },
+  {
+    "legacy": "doEntityDrops",
+    "modern": "minecraft:entity_drops",
+    "name": "实体掉落",
+    "description": "物品展示框、矿车等实体被破坏时可以掉落物品。",
+    "default": true
+  },
+  {
+    "legacy": "fallDamage",
+    "modern": "minecraft:fall_damage",
+    "name": "摔落伤害",
+    "description": "玩家从高处落下时会受伤。",
+    "default": true
+  },
+  {
+    "legacy": "fireDamage",
+    "modern": "minecraft:fire_damage",
+    "name": "火焰伤害",
+    "description": "玩家会受到火和熔岩的伤害。",
+    "default": true
+  },
+  {
+    "legacy": "drowningDamage",
+    "modern": "minecraft:drowning_damage",
+    "name": "溺水伤害",
+    "description": "玩家在水下耗尽氧气后会受伤。",
+    "default": true
+  },
+  {
+    "legacy": "doImmediateRespawn",
+    "modern": "minecraft:immediate_respawn",
+    "name": "立即重生",
+    "description": "玩家死亡后直接重生，跳过死亡画面。",
+    "default": false
+  },
+  {
+    "legacy": "showDeathMessages",
+    "modern": "minecraft:show_death_messages",
+    "name": "死亡消息",
+    "description": "在聊天中显示玩家的死亡消息。",
+    "default": true
+  },
+  {
+    "legacy": "playersSleepingPercentage",
+    "modern": "minecraft:players_sleeping_percentage",
+    "name": "入睡比例",
+    "description": "跳过夜晚所需的入睡玩家百分比。",
+    "default": 100
+  },
+  {
+    "legacy": "spawnRadius",
+    "modern": "minecraft:respawn_radius",
+    "name": "重生半径",
+    "description": "玩家在世界出生点周围随机出生的范围，以方块计。",
+    "default": 10
+  },
+  {
+    "legacy": "maxEntityCramming",
+    "modern": "minecraft:max_entity_cramming",
+    "name": "实体挤压上限",
+    "description": "同处一格的实体超过此数量时会受到挤压伤害。",
+    "default": 24
+  },
+  {
+    "legacy": "doInsomnia",
+    "modern": "minecraft:spawn_phantoms",
+    "name": "幻翼生成",
+    "description": "允许幻翼在长时间没有睡觉的玩家附近生成。",
+    "default": true
+  },
+  {
+    "legacy": "doPatrolSpawning",
+    "modern": "minecraft:spawn_patrols",
+    "name": "巡逻队生成",
+    "description": "允许灾厄巡逻队自然生成。",
+    "default": true
+  },
+  {
+    "legacy": "doTraderSpawning",
+    "modern": "minecraft:spawn_wandering_traders",
+    "name": "流浪商人生成",
+    "description": "允许流浪商人自然出现。",
+    "default": true
+  },
+  {
+    "legacy": "doWardenSpawning",
+    "modern": "minecraft:spawn_wardens",
+    "name": "监守者生成",
+    "description": "允许幽匿尖啸体召唤监守者。",
+    "default": true
+  },
+  {
+    "legacy": "announceAdvancements",
+    "modern": "minecraft:show_advancement_messages",
+    "name": "进度播报",
+    "description": "在聊天中显示玩家达成的进度。",
+    "default": true
+  },
+  {
+    "legacy": "commandBlockOutput",
+    "modern": "minecraft:command_block_output",
+    "name": "命令方块输出",
+    "description": "将命令方块的执行反馈发送给管理员。",
+    "default": true
+  },
+  {
+    "legacy": "sendCommandFeedback",
+    "modern": "minecraft:send_command_feedback",
+    "name": "命令反馈",
+    "description": "向执行命令的玩家显示反馈。",
+    "default": true
+  },
+  {
+    "legacy": "spectatorsGenerateChunks",
+    "modern": "minecraft:spectators_generate_chunks",
+    "name": "旁观者生成区块",
+    "description": "旁观模式的玩家可以加载并生成新区块。",
+    "default": true
+  },
+  {
+    "legacy": "doLimitedCrafting",
+    "modern": "minecraft:limited_crafting",
+    "name": "限制合成",
+    "description": "玩家只能使用已经解锁的配方合成。",
+    "default": false
+  },
+  {
+    "legacy": "doFireTick",
+    "modern": null,
+    "name": "火焰蔓延",
+    "description": "允许火焰自然蔓延和熄灭。",
+    "default": true
+  },
+  {
+    "legacy": "reducedDebugInfo",
+    "modern": "minecraft:reduced_debug_info",
+    "name": "精简调试信息",
+    "description": "隐藏部分调试信息，包括精确坐标。",
+    "default": false
+  },
+  {
+    "legacy": null,
+    "modern": "minecraft:allow_entering_nether_using_portals",
+    "name": "下界传送门",
+    "description": "允许实体通过传送门进入下界。",
+    "default": true
+  },
+  {
+    "legacy": "blockExplosionDropDecay",
+    "modern": "minecraft:block_explosion_drop_decay",
+    "name": "方块爆炸衰减",
+    "description": "床、重生锚等方块爆炸时，部分方块掉落物会损失。",
+    "default": true
+  },
+  {
+    "legacy": null,
+    "modern": "minecraft:command_blocks_work",
+    "name": "启用命令方块",
+    "description": "允许命令方块执行指令。",
+    "default": true
+  },
+  {
+    "legacy": null,
+    "modern": "minecraft:elytra_movement_check",
+    "name": "鞘翅速度检查",
+    "description": "检查鞘翅滑翔时的异常移动。",
+    "default": true
+  },
+  {
+    "legacy": "disableElytraMovementCheck",
+    "modern": null,
+    "name": "关闭鞘翅速度检查",
+    "description": "允许鞘翅滑翔时跳过异常移动检查。",
+    "default": false
+  },
+  {
+    "legacy": "enderPearlsVanishOnDeath",
+    "modern": "minecraft:ender_pearls_vanish_on_death",
+    "name": "死亡时清除珍珠",
+    "description": "玩家死亡时清除其已投出且尚未落地的末影珍珠。",
+    "default": true
+  },
+  {
+    "legacy": null,
+    "modern": "minecraft:fire_spread_radius_around_player",
+    "name": "火焰蔓延半径",
+    "description": "火焰在玩家周围此半径内蔓延。0 停止蔓延，−1 表示不限距离。",
+    "default": 128,
+    "min": -1
+  },
+  {
+    "legacy": "forgiveDeadPlayers",
+    "modern": "minecraft:forgive_dead_players",
+    "name": "原谅死亡玩家",
+    "description": "被激怒的中立生物在目标玩家死亡后消除敌意。",
+    "default": true
+  },
+  {
+    "legacy": "freezeDamage",
+    "modern": "minecraft:freeze_damage",
+    "name": "冰冻伤害",
+    "description": "玩家在细雪中冻结后会受伤。",
+    "default": true
+  },
+  {
+    "legacy": "globalSoundEvents",
+    "modern": "minecraft:global_sound_events",
+    "name": "全局音效",
+    "description": "允许末地传送门开启等事件的音效传遍维度。",
+    "default": true
+  },
+  {
+    "legacy": "lavaSourceConversion",
+    "modern": "minecraft:lava_source_conversion",
+    "name": "熔岩源生成",
+    "description": "满足条件的流动熔岩可以变成熔岩源。",
+    "default": false
+  },
+  {
+    "legacy": "locatorBar",
+    "modern": "minecraft:locator_bar",
+    "name": "玩家定位栏",
+    "description": "在定位栏显示其他玩家的位置。",
+    "default": true
+  },
+  {
+    "legacy": "logAdminCommands",
+    "modern": "minecraft:log_admin_commands",
+    "name": "记录管理指令",
+    "description": "将管理员执行的指令写入服务器日志。",
+    "default": true
+  },
+  {
+    "legacy": "commandModificationBlockLimit",
+    "modern": "minecraft:max_block_modifications",
+    "name": "指令方块数量上限",
+    "description": "限制单次填充或克隆指令能处理的方块数。",
+    "default": 32768,
+    "min": 1
+  },
+  {
+    "legacy": "maxCommandForkCount",
+    "modern": "minecraft:max_command_forks",
+    "name": "指令分支上限",
+    "description": "限制一条指令执行时能创建的分支数。",
+    "default": 65536
+  },
+  {
+    "legacy": "maxCommandChainLength",
+    "modern": "minecraft:max_command_sequence_length",
+    "name": "指令链长度",
+    "description": "限制一次执行中能连续运行的指令数量。",
+    "default": 65536
+  },
+  {
+    "legacy": "minecartMaxSpeed",
+    "modern": "minecraft:max_minecart_speed",
+    "name": "矿车速度上限",
+    "description": "启用矿车改进实验时的最高速度，单位为方块每秒。",
+    "default": 8,
+    "min": 1,
+    "max": 1000,
+    "feature": "minecraft:minecart_improvements"
+  },
+  {
+    "legacy": "snowAccumulationHeight",
+    "modern": "minecraft:max_snow_accumulation_height",
+    "name": "积雪层数",
+    "description": "降雪时同一位置能自然堆积的雪层数。",
+    "default": 1,
+    "max": 8
+  },
+  {
+    "legacy": "mobExplosionDropDecay",
+    "modern": "minecraft:mob_explosion_drop_decay",
+    "name": "生物爆炸衰减",
+    "description": "苦力怕等生物爆炸时，部分方块掉落物会损失。",
+    "default": true
+  },
+  {
+    "legacy": null,
+    "modern": "minecraft:player_movement_check",
+    "name": "玩家速度检查",
+    "description": "检查玩家的异常移动速度。",
+    "default": true
+  },
+  {
+    "legacy": "disablePlayerMovementCheck",
+    "modern": null,
+    "name": "关闭玩家速度检查",
+    "description": "允许玩家跳过异常移动速度检查。",
+    "default": false
+  },
+  {
+    "legacy": "playersNetherPortalCreativeDelay",
+    "modern": "minecraft:players_nether_portal_creative_delay",
+    "name": "创造模式传送等待",
+    "description": "创造模式玩家进入下界传送门后需等待的游戏刻数。",
+    "default": 0
+  },
+  {
+    "legacy": "playersNetherPortalDefaultDelay",
+    "modern": "minecraft:players_nether_portal_default_delay",
+    "name": "传送门等待",
+    "description": "非创造模式玩家进入下界传送门后需等待的游戏刻数。",
+    "default": 80
+  },
+  {
+    "legacy": "projectilesCanBreakBlocks",
+    "modern": "minecraft:projectiles_can_break_blocks",
+    "name": "投射物破坏方块",
+    "description": "允许投射物打碎饰纹陶罐等方块。",
+    "default": true
+  },
+  {
+    "legacy": null,
+    "modern": "minecraft:pvp",
+    "name": "玩家对战",
+    "description": "允许玩家对其他玩家造成伤害。",
+    "default": true
+  },
+  {
+    "legacy": null,
+    "modern": "minecraft:raids",
+    "name": "袭击事件",
+    "description": "允许村庄发生袭击。",
+    "default": true
+  },
+  {
+    "legacy": "disableRaids",
+    "modern": null,
+    "name": "禁用袭击",
+    "description": "阻止村庄发生袭击。",
+    "default": false
+  },
+  {
+    "legacy": null,
+    "modern": "minecraft:spawn_monsters",
+    "name": "怪物生成",
+    "description": "允许敌对生物生成。",
+    "default": true
+  },
+  {
+    "legacy": null,
+    "modern": "minecraft:spawner_blocks_work",
+    "name": "刷怪笼",
+    "description": "允许刷怪笼生成生物。",
+    "default": true
+  },
+  {
+    "legacy": "doVinesSpread",
+    "modern": "minecraft:spread_vines",
+    "name": "藤蔓生长",
+    "description": "允许藤蔓自然扩展。",
+    "default": true
+  },
+  {
+    "legacy": "tntExplodes",
+    "modern": "minecraft:tnt_explodes",
+    "name": "TNT 爆炸",
+    "description": "允许点燃的 TNT 爆炸。",
+    "default": true
+  },
+  {
+    "legacy": "tntExplosionDropDecay",
+    "modern": "minecraft:tnt_explosion_drop_decay",
+    "name": "TNT 掉落衰减",
+    "description": "TNT 爆炸时，部分方块掉落物会损失。",
+    "default": false
+  },
+  {
+    "legacy": "universalAnger",
+    "modern": "minecraft:universal_anger",
+    "name": "普遍愤怒",
+    "description": "被激怒的中立生物会把附近所有玩家视作目标。",
+    "default": false
+  },
+  {
+    "legacy": "waterSourceConversion",
+    "modern": "minecraft:water_source_conversion",
+    "name": "水源生成",
+    "description": "满足条件的流动水可以变成水源。",
+    "default": true
+  }
+]

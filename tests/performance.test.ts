@@ -1,13 +1,20 @@
-import { describe, it, expect, afterEach } from 'vitest';
+import { describe, it, expect, afterEach, vi } from 'vitest';
 import { mkdtemp, mkdir, readFile, writeFile, rm } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
-import { memoryBudget, planRuntime, requiredJava, Performance } from '../electron/core/performance';
+import {
+  memoryArgumentIssues,
+  memoryBudget,
+  planRuntime,
+  requiredJava,
+  Performance,
+} from '../electron/core/performance';
 import { javaArch, compareJava, Java } from '../electron/core/java';
 import { diagnose, gcSummary, Diagnostics } from '../electron/core/diagnostics';
 import { VideoSettings, optionValues } from '../electron/core/video-settings';
 import { Store } from '../electron/core/store';
-import { Minecraft } from '../electron/core/minecraft';
+import { Minecraft, expandArguments } from '../electron/core/minecraft';
+import { prepareGameLaunch } from '../electron/core/launch-options';
 import { Network } from '../electron/core/network';
 import { atomicJson } from '../electron/core/files';
 import { redact } from '../electron/core/launcher';
@@ -147,6 +154,81 @@ describe('runtime policy', () => {
       '-Xmx4096M',
     ]);
   });
+  it('respects JVM collector choices across sources and rejects an explicitly disabled managed GC', () => {
+    const codes = (jvmArgs: string[], metadata: string[], collector: 'auto' | 'g1' = 'auto') =>
+      planRuntime(
+        { ...instance, jvmArgs, performance: { memory: 'manual', collector, gcLogging: false } },
+        21,
+        { ...runtime, vendor: 'Azul Systems, Inc.' },
+        16384,
+        12000,
+        'x64',
+        metadata,
+      )
+        .issues.filter((issue) => issue.level === 'error')
+        .map((issue) => issue.code);
+    expect(codes(['-XX:+UseZGC'], ['-XX:+UseG1GC'])).toContain('gc-conflict');
+    expect(codes([], ['-XX:+UseSerialGC', '-XX:+UseG1GC'])).toContain('gc-conflict');
+    expect(codes(['-XX:+UseZGC'], ['-XX:-UseZGC', '-XX:+UseG1GC'])).toEqual([]);
+    expect(codes(['-XX:+UseG1GC'], ['-XX:+UseG1GC'], 'g1')).toEqual([]);
+    expect(codes([], ['-XX:-UseG1GC'], 'g1')).toContain('gc-conflict');
+    expect(codes(['-XX:+UseAdaptiveSizePolicyWithSystemGC'], [], 'g1')).toEqual([]);
+    expect(codes(['-Xms256M'], ['-XX:InitialHeapSize=1G'])).toContain('xms-duplicate');
+    expect(codes([], ['-XX:InitialHeapSize=8G'])).toContain('xms-invalid');
+  });
+  it('uses the same profile, classpath and active feature rules for preflight and launch', async () => {
+    const store = await fixture();
+    const mc = new Minecraft(store, new Network(() => store.data.settings));
+    const java = { discover: async () => [{ ...runtime, arch: process.arch }] } as unknown as Java;
+    const performance = new Performance(store, mc, java);
+    const i = store.instance('test');
+    i.jvmArgs = ['-XX:+UseZGC'];
+    const serverRule = [{ action: 'allow', features: { is_quick_play_multiplayer: true } }];
+    await atomicJson(mc.profile(i.id), {
+      id: 'fixture',
+      mainClass: 'Main',
+      libraries: [],
+      javaVersion: { majorVersion: 21 },
+      arguments: {
+        game: [{ rules: serverRule, value: ['--quickPlayMultiplayer', '${quickPlayMultiplayer}'] }],
+        jvm: [
+          '-cp',
+          '${classpath}',
+          { rules: serverRule, value: ['-XX:+UseG1GC', '-Xms8G'] },
+          {
+            rules: [{ action: 'allow', features: { has_custom_resolution: true } }],
+            value: '-Xmx2G',
+          },
+        ],
+      },
+    });
+    await writeFile(path.join(store.dir(i.id), 'client.jar'), 'fixture');
+    i.launchOptions = { fullscreen: true, target: { kind: 'menu' } };
+    const resolved = vi.spyOn(mc, 'resolved');
+    const plan = await prepareGameLaunch(mc, i.id);
+    const check = await performance.check(i.id, false, undefined, plan);
+    expect(resolved).toHaveBeenCalledTimes(1);
+    expect(check.checkedFiles).toBe(plan.classpath.length);
+    expect(plan.jvm).toEqual(['-cp', '${classpath}']);
+    expect(check.managedArgs).toEqual(['-Xmx4096M']);
+    expect(check.issues.filter((issue) => issue.level === 'error')).toEqual([]);
+
+    i.launchOptions = { fullscreen: false, target: { kind: 'server', address: 'localhost' } };
+    const issues = (await performance.check(i.id, false)).issues.map((issue) => issue.code);
+    expect(issues).toEqual(
+      expect.arrayContaining(['gc-conflict', 'xms-invalid', 'metadata-conflict']),
+    );
+  });
+  it('checks a metadata heap template once the launch variable has a value', () => {
+    const template = ['-XX:InitialHeapSize=${resolution_width}M'];
+    expect(planRuntime(instance, 21, runtime, 16384, 12000, 'x64', template).issues).toEqual([]);
+    expect(
+      memoryArgumentIssues(instance, 512, expandArguments(template, { resolution_width: '256' })),
+    ).toEqual([]);
+    expect(
+      memoryArgumentIssues(instance, 512, expandArguments(template, { resolution_width: '1024' })),
+    ).toMatchObject([{ code: 'xms-invalid', level: 'error' }]);
+  });
   it('detects missing launch files without network access or authentication', async () => {
     const store = await fixture(),
       net = new Network(() => store.data.settings),
@@ -250,7 +332,7 @@ describe('durable diagnosis', () => {
     old.instances[0].memoryMb = 7168;
     await atomicJson(file, old);
     const migrated = new Store(store.root);
-    expect(migrated.data.schemaVersion).toBe(7);
+    expect(migrated.data.schemaVersion).toBe(9);
     expect(migrated.instance('test').memoryMb).toBe(7168);
     expect(migrated.instance('test').performance?.memory).toBe('manual');
     expect(JSON.parse(await readFile(file + '.v2.bak', 'utf8'))).toEqual(old);

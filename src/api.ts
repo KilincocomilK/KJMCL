@@ -10,7 +10,7 @@ const empty: Snapshot = {
     memoryMb: 4096,
     javaPath: '',
     proxy: '',
-    source: 'official',
+    source: 'bmclapi',
     concurrency: 6,
     microsoftClientId: '',
     closeOnLaunch: false,

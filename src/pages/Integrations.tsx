@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { ShieldCheck } from 'lucide-react';
+import { SettingGroup } from '../components/SettingGroup';
 import type { Snapshot } from '../../shared/types';
 import { api } from '../api';
 import { Field } from '../components';
@@ -7,11 +7,7 @@ import type { Run } from '../ui';
 export function Integrations({ state, run }: { state: Snapshot; run: Run }) {
   const [keys, setKeys] = useState({ curseforge: '', modrinth: '' });
   return (
-    <section className="panel setting-section">
-      <div className="section-title">
-        <ShieldCheck size={19} />
-        <h2>平台凭据</h2>
-      </div>
+    <SettingGroup title="平台凭据" art="gear">
       <div className="form-grid">
         {(['curseforge', 'modrinth'] as const).map((service) => (
           <Field
@@ -51,6 +47,6 @@ export function Integrations({ state, run }: { state: Snapshot; run: Run }) {
           </Field>
         ))}
       </div>
-    </section>
+    </SettingGroup>
   );
 }

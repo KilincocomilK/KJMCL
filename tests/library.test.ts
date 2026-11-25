@@ -74,7 +74,7 @@ it('migrates v3 without losing accounts, paths, settings or playtime and keeps e
   const bytes = JSON.stringify(original);
   await writeFile(file, bytes);
   const next = new Store(store.root);
-  expect(next.data.schemaVersion).toBe(7);
+  expect(next.data.schemaVersion).toBe(9);
   expect(next.data.favorites).toEqual([]);
   expect(next.data.accounts).toEqual(original.accounts);
   expect(next.data.instances[0].gameDir).toBe(original.instances[0].gameDir);

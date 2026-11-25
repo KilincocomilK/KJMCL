@@ -1,7 +1,10 @@
 import path from 'node:path';
 import { spawn } from 'node:child_process';
-import { randomUUID } from 'node:crypto';
-import { mkdir, lstat, readFile, writeFile, copyFile, unlink } from 'node:fs/promises';
+import { createHash, randomUUID } from 'node:crypto';
+import { createReadStream, createWriteStream } from 'node:fs';
+import { Transform } from 'node:stream';
+import { pipeline } from 'node:stream/promises';
+import { mkdir, lstat, readFile, writeFile, copyFile, unlink, rmdir } from 'node:fs/promises';
 import { z } from 'zod';
 import { PNG } from 'pngjs';
 import { checkGamePath } from './game-folders';
@@ -295,34 +298,87 @@ export class ProjectionWorkshop {
       };
     });
   }
-  importFile(source: string): Promise<ProjectionDocument> {
+  async readPreview(input: string, output: string): Promise<ProjectionDocument> {
+    const data = this.check(await this.invoke<ProjectionData>('import', { input, output }));
+    return { ...data, id: randomUUID(), revision: randomUUID(), canUndo: false, canRedo: false };
+  }
+  importFile(source: string, resourceKey?: string): Promise<ProjectionDocument> {
     return this.serial(async () => {
       if (!path.isAbsolute(source)) throw new Error('请选择完整文件路径');
       await checkGamePath(source);
       const stat = await lstat(source);
       if (!stat.isFile() || stat.size > 64 * 1024 * 1024) throw new Error('投影文件超过 64 MiB');
-      const index = await this.index();
-      if (index.entries.length >= 32) throw new Error('作品库最多保存 32 个投影');
-      const revision = randomUUID(),
-        file = await this.file(revision);
+      let stagingDirectory: string | undefined, stagedSource: string | undefined;
       try {
-        const data = this.check(
-          await this.invoke<ProjectionData>('import', { input: source, output: file }),
-        );
-        const e = {
-          id: randomUUID(),
-          name: data.name.trim().slice(0, 80) || '未命名投影',
-          modifiedAt: Date.now(),
-          history: [revision],
-          cursor: 0,
-        };
-        index.entries.unshift(e);
-        index.current = e.id;
-        await this.commit(index);
-        return await this.document(e, data);
-      } catch (error) {
-        await unlink(file).catch(() => {});
-        throw error;
+        let projectId: string = randomUUID();
+        if (resourceKey !== undefined) {
+          // Hash and parse the same bounded snapshot, even if another app edits the source.
+          const directory = path.join(await this.root(), '.import-' + randomUUID());
+          await mkdir(directory);
+          stagingDirectory = directory;
+          stagedSource = path.join(directory, path.basename(source));
+          const hash = createHash('sha256');
+          let bytes = 0;
+          await pipeline(
+            createReadStream(source),
+            new Transform({
+              transform(chunk, _encoding, callback) {
+                bytes += chunk.length;
+                if (bytes > 64 * 1024 * 1024) return callback(new Error('投影文件超过 64 MiB'));
+                hash.update(chunk);
+                callback(null, chunk);
+              },
+            }),
+            createWriteStream(stagedSource, { flags: 'wx' }),
+          );
+          const uuid = createHash('sha256')
+            .update('kjmcl-resource-projection-v1\0')
+            .update(resourceKey)
+            .update('\0')
+            .update(hash.digest('hex'))
+            .digest()
+            .subarray(0, 16);
+          uuid[6] = (uuid[6] & 0x0f) | 0x80;
+          uuid[8] = (uuid[8] & 0x3f) | 0x80;
+          const hex = uuid.toString('hex');
+          projectId = `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`;
+        }
+        const index = await this.index();
+        const existing = index.entries.find((entry) => entry.id === projectId);
+        if (existing) {
+          const document = await this.document(existing);
+          index.current = existing.id;
+          await this.commit(index);
+          return document;
+        }
+        if (index.entries.length >= 32) throw new Error('作品库最多保存 32 个投影');
+        const revision = randomUUID(),
+          file = await this.file(revision);
+        try {
+          const data = this.check(
+            await this.invoke<ProjectionData>('import', {
+              input: stagedSource ?? source,
+              output: file,
+            }),
+          );
+          const e = {
+            id: projectId,
+            name: data.name.trim().slice(0, 80) || '未命名投影',
+            modifiedAt: Date.now(),
+            history: [revision],
+            cursor: 0,
+          };
+          index.entries.unshift(e);
+          index.current = e.id;
+          await this.commit(index);
+          return await this.document(e, data);
+        } catch (error) {
+          await unlink(file).catch(() => {});
+          throw error;
+        }
+      } finally {
+        if (stagedSource) await unlink(stagedSource).catch(() => {});
+        if (stagingDirectory) await rmdir(stagingDirectory).catch(() => {});
       }
     });
   }

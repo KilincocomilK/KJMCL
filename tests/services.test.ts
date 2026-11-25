@@ -1,5 +1,5 @@
 import { it, expect, afterEach, vi } from 'vitest';
-import { mkdtemp, rm, mkdir, writeFile, readFile } from 'node:fs/promises';
+import { mkdtemp, rm, mkdir, writeFile, readFile, readdir } from 'node:fs/promises';
 import path from 'node:path';
 import os from 'node:os';
 import { createHash } from 'node:crypto';
@@ -42,11 +42,16 @@ async function fixture() {
 it('installs a complete synthetic Minecraft artifact graph and reuses verified files', async () => {
   const { store, net, ctx } = await fixture();
   store.instance('test').loader = 'vanilla';
+  store.instance('test').version = '1.21.2';
   const mc = new Minecraft(store, net);
   const resource = Buffer.from('resource'),
     client = Buffer.from('client'),
     lib = Buffer.from('lib');
   const hash = (data: Buffer) => createHash('sha1').update(data).digest('hex');
+  const logging = Buffer.from('<Configuration status="WARN"/>');
+  const logName = 'client-1.21.2.xml';
+  const logUrl = 'https://piston-data.mojang.com/v1/objects/' + hash(logging) + '/' + logName;
+  const mirrorUrl = net.url(logUrl);
   const assetIndex = Buffer.from(
     JSON.stringify({ objects: { 'test.txt': { hash: hash(resource), size: resource.length } } }),
   );
@@ -63,7 +68,7 @@ it('installs a complete synthetic Minecraft artifact graph and reuses verified f
     path: name,
   });
   const version = {
-    id: '1.21.1',
+    id: '1.21.2',
     type: 'release',
     mainClass: 'Main',
     libraries: [
@@ -75,6 +80,12 @@ it('installs a complete synthetic Minecraft artifact graph and reuses verified f
       },
     ],
     downloads: { client: artifact('client.jar', client) },
+    logging: {
+      client: {
+        argument: '-Dlog4j.configurationFile=${path}',
+        file: { id: logName, url: logUrl, sha1: hash(logging), size: logging.length },
+      },
+    },
     assetIndex: { ...artifact('index.json', assetIndex), id: 'test' },
     arguments: { game: ['--username', '${auth_player_name}'] },
   };
@@ -86,21 +97,29 @@ it('installs a complete synthetic Minecraft artifact graph and reuses verified f
     'native.jar': nativeData,
     'index.json': assetIndex,
     [hash(resource)]: resource,
+    [logName]: logging,
   };
   vi.spyOn(net, 'json').mockResolvedValue({
-    versions: [{ id: '1.21.1', url: 'https://fixture.test/version.json', sha1: hash(metadata) }],
+    versions: [{ id: version.id, url: 'https://fixture.test/version.json', sha1: hash(metadata) }],
   });
-  const response = vi
-    .spyOn(net, 'response')
-    .mockImplementation(
-      async (url) => new Response(new Uint8Array(data[url.split('/').at(-1)!])) as any,
-    );
+  const logRequests: string[] = [];
+  const response = vi.spyOn(net, 'response').mockImplementation(async (url, _options, mirror) => {
+    const target = mirror ? net.url(url) : url;
+    if (target.endsWith('/' + logName)) logRequests.push(target);
+    if (target === mirrorUrl) return new Response(null, { status: 404 }) as any;
+    return new Response(new Uint8Array(data[target.split('/').at(-1)!])) as any;
+  });
   await mc.install('test', ctx);
+  expect(logRequests).toEqual([mirrorUrl, logUrl]);
+  expect(await readFile(path.join(store.runtime('test'), 'assets/log_configs', logName))).toEqual(
+    logging,
+  );
   expect(store.instance('test').status).toBe('ready');
   expect(await readFile(path.join(store.dir('test'), 'natives/native.dll'), 'utf8')).toBe('native');
   expect(await exists(path.join(store.dir('test'), 'natives/META-INF/MANIFEST.MF'))).toBe(false);
   const calls = response.mock.calls.length;
-  await mc.install('test', ctx);
+  await mc.install('test', ctx, 'installing');
+  expect(store.instance('test').status).toBe('installing');
   expect(response.mock.calls.length).toBe(calls);
 });
 it('failed installation is retryable and never becomes ready', async () => {
@@ -123,6 +142,67 @@ it('never commits downloaded content with the wrong digest', async () => {
   ).rejects.toThrow('哈希');
   expect(await exists(dest)).toBe(false);
   expect(await exists(dest + '.part')).toBe(false);
+});
+
+it('rejects a wrong digest from the fallback and leaves the previous file intact', async () => {
+  const { root, net, ctx } = await fixture();
+  const url = 'https://piston-data.mojang.com/v1/objects/example/client.xml';
+  const requests: string[] = [];
+  vi.spyOn(net, 'response').mockImplementation(async (input, _options, mirror) => {
+    const target = mirror ? net.url(input) : input;
+    requests.push(target);
+    return (target === url ? new Response('bad') : new Response(null, { status: 410 })) as any;
+  });
+  const dest = path.join(root, 'client.xml');
+  await writeFile(dest, 'previous');
+  await expect(
+    net.download(url, dest, { signal: ctx.signal, hash: '0'.repeat(40), size: 3 }),
+  ).rejects.toThrow('哈希');
+  expect(requests[0]).toBe(net.url(url));
+  expect(requests[1]).toBe(url);
+  expect(requests.slice(1).every((target) => target === url)).toBe(true);
+  expect(await readFile(dest, 'utf8')).toBe('previous');
+  expect((await readdir(root)).filter((name) => name.endsWith('.part'))).toEqual([]);
+});
+
+it('does not start a fallback after cancellation', async () => {
+  const { root, net } = await fixture();
+  const controller = new AbortController();
+  const response = vi.spyOn(net, 'response').mockImplementation(async () => {
+    controller.abort(new Error('cancel fixture'));
+    return new Response(null, { status: 404 }) as any;
+  });
+  const dest = path.join(root, 'client.xml');
+  await expect(
+    net.download('https://piston-data.mojang.com/client.xml', dest, { signal: controller.signal }),
+  ).rejects.toThrow('cancel fixture');
+  expect(response).toHaveBeenCalledTimes(1);
+  expect(await exists(dest)).toBe(false);
+});
+
+it('reports the official response if both sources lack the artifact', async () => {
+  const { root, net, ctx } = await fixture();
+  const url = 'https://piston-data.mojang.com/missing.xml';
+  const requests: string[] = [];
+  vi.spyOn(net, 'response').mockImplementation(async (input, _options, mirror) => {
+    requests.push(mirror ? net.url(input) : input);
+    return new Response(null, { status: 404 }) as any;
+  });
+  await expect(net.download(url, path.join(root, 'missing.xml'), ctx)).rejects.toThrow(
+    '下载失败 (404) · piston-data.mojang.com',
+  );
+  expect(requests).toEqual([net.url(url), url]);
+});
+
+it('identifies the server that returned a download error without exposing URL parameters', async () => {
+  const { root, net, ctx } = await fixture();
+  const url = 'https://piston-data.mojang.com/client.xml?token=private';
+  vi.spyOn(net, 'response').mockImplementation(
+    async () => new Response(null, { status: 503 }) as any,
+  );
+  await expect(net.download(url, path.join(root, 'client.xml'), ctx)).rejects.toThrow(
+    /^下载失败 \(503\) · bmclapi2\.bangbang93\.com$/,
+  );
 });
 it('resolves required Modrinth dependencies and preserves disabled state during updates', async () => {
   const { store, net, ctx } = await fixture(),

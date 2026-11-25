@@ -2,7 +2,13 @@ import path from 'node:path';
 import { lstat, readdir } from 'node:fs/promises';
 import type { Account, InstanceLaunchOptions, LaunchChoices } from '../../shared/types';
 import { launchOptionsSchema } from '../../shared/schema';
-import { allowed, expandArguments, type Version } from './minecraft';
+import {
+  allowed,
+  expandArguments,
+  selectArguments,
+  type Minecraft,
+  type Version,
+} from './minecraft';
 import { checkGamePath } from './game-folders';
 import { inside } from './files';
 
@@ -98,6 +104,30 @@ export async function prepareLaunchOptions(
     } else variables.quickPlayMultiplayer = options.target.address;
   }
   return { features, variables, fullscreen: options.fullscreen };
+}
+
+// Use one resolved profile and one rule selection for preflight and the game process.
+export async function prepareGameLaunch(mc: Minecraft, id: string) {
+  const { version, client } = await mc.resolved(id);
+  const options = await prepareLaunchOptions(
+    version,
+    mc.store.dir(id),
+    mc.store.instance(id).launchOptions,
+  );
+  const jvm = selectArguments(
+    version.arguments?.jvm?.length
+      ? version.arguments.jvm
+      : ['-Djava.library.path=${natives_directory}', '-cp', '${classpath}'],
+    options.features,
+  );
+  const classpath = [
+    ...mc
+      .libraryFiles(version, id)
+      .filter((f) => !f.native)
+      .map((f) => f.dest),
+    client,
+  ];
+  return { version, client, options, jvm, classpath };
 }
 
 export function gameLaunchArguments(

@@ -1,3 +1,8 @@
+import type { Readable, Writable } from 'node:stream';
+import { finished } from 'node:stream/promises';
+import type { LogLine } from '../../shared/types';
+import { redact } from './log-redaction';
+
 type Level = 'info' | 'error';
 const limit = 256 * 1024;
 function xmlText(text: string) {
@@ -18,8 +23,7 @@ export class GameLogDecoder {
   push(chunk: string) {
     this.buffer += chunk;
     while (this.buffer) {
-      const start = this.buffer.indexOf('<log4j:Event');
-      if (start === 0) {
+      if (this.buffer.startsWith('<log4j:Event')) {
         const end = this.buffer.indexOf('</log4j:Event>');
         if (end < 0 && this.buffer.length <= limit) return;
         if (end >= 0 && end <= limit) {
@@ -42,8 +46,9 @@ export class GameLogDecoder {
         }
       }
       const newline = this.buffer.indexOf('\n');
-      const boundary =
-        start > 0 && (newline < 0 || start < newline) ? start : newline >= 0 ? newline + 1 : -1;
+      const firstLine = newline < 0 ? this.buffer : this.buffer.slice(0, newline);
+      const start = firstLine.indexOf('<log4j:Event');
+      const boundary = start > 0 ? start : newline + 1;
       if (boundary > 0) {
         this.plain(this.buffer.slice(0, boundary));
         this.buffer = this.buffer.slice(boundary);
@@ -60,5 +65,85 @@ export class GameLogDecoder {
   private plain(text: string) {
     const line = text.replace(/\r?\n$/, '');
     if (line.trim()) this.emit(this.fallback, line);
+  }
+}
+// Each pipe keeps its own decoder. The two share one ordered append stream per game.
+export class GameOutput {
+  private done: Promise<void>;
+  constructor(
+    private pipes: { stdout: Readable; stderr: Readable },
+    private disk: Writable,
+    private instanceId: string,
+    private token: string,
+    private record: (lines: LogLine[]) => void,
+  ) {
+    const resume = () => {
+      pipes.stdout.resume();
+      pipes.stderr.resume();
+    };
+    disk.on('drain', resume);
+    this.done = finished(disk, { readable: false, cleanup: true }).catch(() => {
+      resume();
+      record([this.line('error', '完整游戏日志写入失败，可在启动器查看最近日志')]);
+    });
+    this.read(pipes.stdout, 'info');
+    this.read(pipes.stderr, 'error');
+  }
+  private line(level: Level, text: string): LogLine {
+    return {
+      instanceId: this.instanceId,
+      time: Date.now(),
+      level,
+      text: redact(text, [this.token]),
+    };
+  }
+  private publish(lines: LogLine[]) {
+    if (!lines.length) return;
+    this.record(lines);
+    if (!this.disk.writable) return;
+    const text = lines
+      .map((line) => new Date(line.time).toISOString() + ' ' + line.text + '\n')
+      .join('');
+    if (!this.disk.write(text)) {
+      this.pipes.stdout.pause();
+      this.pipes.stderr.pause();
+    }
+  }
+  private read(stream: Readable, level: Level) {
+    let batch: LogLine[] = [];
+    const decoder = new GameLogDecoder(level, (severity, text) =>
+      batch.push(this.line(severity, text)),
+    );
+    const flush = () => {
+      this.publish(batch);
+      batch = [];
+    };
+    stream.setEncoding('utf8');
+    stream.on('data', (chunk: string) => {
+      decoder.push(chunk);
+      flush();
+    });
+    stream.once('end', () => {
+      decoder.end();
+      flush();
+    });
+  }
+  write(level: Level, text: string) {
+    this.publish([this.line(level, text)]);
+  }
+  // Wait for the records already received when a running game exports its log.
+  async flush() {
+    if (this.disk.writable) {
+      await new Promise<void>((resolve, reject) => {
+        this.disk.write('', (error) => (error ? reject(error) : resolve()));
+      });
+    } else {
+      await this.done;
+      if (this.disk.errored) throw new Error('完整游戏日志写入失败');
+    }
+  }
+  close() {
+    this.disk.end();
+    return this.done;
   }
 }

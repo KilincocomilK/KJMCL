@@ -5,6 +5,7 @@ import os from 'node:os';
 import { AppearanceManager, backgroundDimensions } from '../electron/core/appearance';
 import { Store } from '../electron/core/store';
 import { schemas } from '../shared/schema';
+import { DEFAULT_SIDEBAR_ORDER } from '../shared/navigation';
 
 const roots: string[] = [];
 const png = Buffer.from(
@@ -147,7 +148,7 @@ describe('appearance contract and migration', () => {
     const original = { ...data, schemaVersion: 5 };
     await writeFile(path.join(root, 'state.json'), JSON.stringify(original));
     const next = new Store(root);
-    expect(next.data.schemaVersion).toBe(7);
+    expect(next.data.schemaVersion).toBe(9);
     expect(next.data.appearance).toEqual({ dim: 32, blur: 0 });
     expect(next.data.accounts).toEqual(original.accounts);
     expect(next.data.gameFolders).toEqual(original.gameFolders);
@@ -161,4 +162,46 @@ describe('appearance contract and migration', () => {
       original,
     );
   });
+});
+
+it('migrates v7 with a backup and persists only complete sidebar permutations', async () => {
+  const { root, store } = await fixture();
+  const { sidebarOrder: order, ...prior } = store.data;
+  const original = { ...prior, schemaVersion: 7, appearance: { dim: 31, blur: 2 } };
+  const file = path.join(root, 'state.json');
+  await writeFile(file, JSON.stringify(original));
+  const migrated = new Store(root);
+  expect(migrated.data.sidebarOrder).toEqual(DEFAULT_SIDEBAR_ORDER);
+  expect(JSON.parse(await readFile(file + '.v7.bak', 'utf8'))).toEqual(original);
+  const sorted = [...order].reverse();
+  migrated.setSidebarOrder(sorted);
+  expect(new Store(root).data).toEqual({ ...original, schemaVersion: 9, sidebarOrder: sorted });
+  for (const candidate of [
+    order.slice(1),
+    [...order.slice(1), 'home'],
+    [...order.slice(1), 'settings'],
+    [...order.slice(1), 'accounts'],
+    [...order.slice(1), order[1]],
+  ]) {
+    expect(schemas.setSidebarOrder.safeParse(candidate).success).toBe(false);
+  }
+  const invalid = JSON.stringify({ ...migrated.data, sidebarOrder: [] });
+  await writeFile(file, invalid);
+  expect(() => new Store(root)).toThrow();
+  expect(await readFile(file, 'utf8')).toBe(invalid);
+});
+
+it('pins the two footer entries on v8 migration and preserves the other positions', async () => {
+  const { root, store } = await fixture();
+  const movable = [...store.data.sidebarOrder].reverse();
+  const old = {
+    ...store.data,
+    schemaVersion: 8,
+    sidebarOrder: ['accounts', ...movable.slice(0, 2), 'settings', ...movable.slice(2)],
+  };
+  const file = path.join(root, 'state.json');
+  await writeFile(file, JSON.stringify(old));
+  expect(new Store(root).data).toEqual({ ...old, schemaVersion: 9, sidebarOrder: movable });
+  expect(new Store(root).data.sidebarOrder).toEqual(movable);
+  expect(JSON.parse(await readFile(file + '.v8.bak', 'utf8'))).toEqual(old);
 });

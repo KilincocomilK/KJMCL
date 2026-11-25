@@ -23,10 +23,12 @@ const launch = async () => {
 const snapshot = (page) => page.evaluate(() => window.kjmcl.snapshot());
 const noHorizontalOverflow = async (page) => {
   const overflowing = await page.evaluate(() =>
-    ['html', 'body', '.app-shell', '.main-shell', 'main'].filter((selector) => {
-      const node = document.querySelector(selector);
-      return node && node.scrollWidth > node.clientWidth + 1;
-    }),
+    ['html', 'body', '.app-shell', '.main-shell', 'main', '.pane-rail', '.pane-content'].filter(
+      (selector) => {
+        const node = document.querySelector(selector);
+        return node && node.scrollWidth > node.clientWidth + 1;
+      },
+    ),
   );
   if (overflowing.length) {
     await page.screenshot({ animations: 'disabled', path: '.local/appearance-overflow.png' });
@@ -52,18 +54,94 @@ try {
   await mkdir('.local', { recursive: true });
   let page = await launch();
   await expect(page.getByRole('heading', { name: '开始游戏', exact: true })).toBeVisible();
+  await expect(page.locator('.titlebar')).not.toContainText('KJMCL');
+  await expect(page.locator('body')).toHaveCSS('font-family', /Fusion Pixel/);
+  expect(
+    await page.evaluate(async () =>
+      (await document.fonts.load('14px "Fusion Pixel"', '资源管理')).some(
+        (font) => font.status === 'loaded',
+      ),
+    ),
+  ).toBe(true);
   await expect(page.getByRole('button', { name: '创建游戏实例', exact: true })).toBeVisible();
   await expect(page.locator('main')).not.toContainText(/JAVA EDITION|Java Edition|就绪/);
   await noHorizontalOverflow(page);
+  await page.emulateMedia({ reducedMotion: 'reduce' });
+  await expect(page.locator('.home-launch')).toHaveCSS('animation-name', 'none');
+  await expect(page.locator('.hero-button')).toHaveCSS('transition-duration', '0s');
+  await page.emulateMedia({ reducedMotion: 'no-preference' });
+  await expect(page.locator('.home-launch')).toHaveCSS('animation-timing-function', /cubic-bezier/);
   const sidebar = await page.locator('.sidebar').boundingBox();
   const content = await page.locator('.main-shell').boundingBox();
-  expect(sidebar.x).toBeGreaterThan(0);
-  expect(sidebar.y).toBeGreaterThan(0);
-  expect(content.x).toBeGreaterThan(sidebar.x + sidebar.width);
+  expect(sidebar.x).toBe(0);
+  expect(sidebar.y).toBe(0);
+  expect(sidebar.width).toBeLessThanOrEqual(72);
+  expect(content.x).toBeCloseTo(sidebar.x + sidebar.width, 0);
+  const stage = await page.locator('.home-stage').boundingBox();
+  const header = await page.locator('.titlebar').boundingBox();
+  expect(stage.x).toBeCloseTo(content.x, 0);
+  expect(stage.y).toBeCloseTo(header.y + header.height, 0);
+  expect(stage.y + stage.height).toBeCloseTo(content.y + content.height, 0);
   expect(
-    await page.locator('.sidebar').evaluate((el) => getComputedStyle(el).backdropFilter),
-  ).not.toBe('none');
+    await page.locator('.background-scene').evaluate((n) => getComputedStyle(n).backgroundImage),
+  ).toContain('mesa-sunset');
   await page.screenshot({ animations: 'disabled', path: '.local/appearance-home-default.png' });
+
+  const rail = page.locator('.sidebar');
+  await expect(rail.locator('.brand')).toHaveText('');
+  await expect(rail.locator('.brand svg')).toBeVisible();
+  const buttons = rail.getByRole('button');
+  await expect(buttons).toHaveCount(11);
+  expect(
+    await buttons.evaluateAll((items) =>
+      items.every(
+        (button) => button.ariaLabel && !button.textContent.trim() && button.querySelector('svg'),
+      ),
+    ),
+  ).toBe(true);
+  const library = rail.getByRole('button', { name: '游戏实例', exact: true });
+  await library.hover();
+  const tooltip = rail.getByRole('tooltip');
+  await expect(tooltip).toHaveText('游戏实例');
+  const tipBox = await tooltip.boundingBox();
+  expect(tipBox.x).toBeGreaterThanOrEqual(sidebar.x + sidebar.width);
+  await page.mouse.move(content.x + 50, content.y + 60);
+  await expect(tooltip).toHaveCount(0);
+  await library.focus();
+  await page.keyboard.press('Tab');
+  await expect(rail.getByRole('button', { name: '资源管理', exact: true })).toBeFocused();
+  await expect(tooltip).toHaveText('资源管理');
+  await page.keyboard.press('Escape');
+  await expect(tooltip).toHaveCount(0);
+
+  const home = buttons.first();
+  const settings = rail.getByRole('button', { name: '启动器设置', exact: true });
+  await expect(home).toHaveAccessibleName('开始游戏');
+  await expect(home).toHaveJSProperty('draggable', false);
+  await expect(home).toHaveCSS('box-shadow', /inset/);
+  const initialOrder = (await snapshot(page)).sidebarOrder;
+  const accounts = rail.getByRole('button', { name: '账户管理', exact: true });
+  const saves = rail.getByRole('button', { name: '存档管理', exact: true });
+  for (const fixed of [settings, accounts]) {
+    await expect(fixed).toHaveJSProperty('draggable', false);
+    await fixed.dragTo(library);
+    await fixed.press('Alt+ArrowUp');
+    await saves.dragTo(fixed);
+  }
+  await saves.dragTo(home, { targetPosition: { x: 12, y: 4 } });
+  expect((await snapshot(page)).sidebarOrder).toEqual(initialOrder);
+  await saves.dragTo(library, { targetPosition: { x: 12, y: 4 } });
+  await expect(buttons.nth(1)).toHaveAccessibleName('存档管理');
+  await expect(home).toHaveAttribute('aria-current', 'page');
+  await saves.press('Alt+ArrowDown');
+  await expect(buttons.nth(2)).toHaveAccessibleName('存档管理');
+  await expect(saves).toBeFocused();
+  const savedOrder = [
+    'instances',
+    'saves',
+    ...initialOrder.filter((key) => key !== 'instances' && key !== 'saves'),
+  ];
+  await expect.poll(async () => (await snapshot(page)).sidebarOrder).toEqual(savedOrder);
 
   const ids = await page.evaluate(async () => {
     const ids = [];
@@ -78,8 +156,16 @@ try {
   await instances.focus();
   await instances.press('Space');
   await expect(instances).toHaveAttribute('aria-expanded', 'true');
+  await expect(instances).toHaveCSS('font-family', /Fusion Pixel/);
+  await expect(page.getByRole('option').first()).toHaveCSS('font-family', /Fusion Pixel/);
   await instances.press('End');
   await page.screenshot({ animations: 'disabled', path: '.local/appearance-dropdown.png' });
+  const menuBox = await page.getByRole('listbox').boundingBox();
+  const triggerBox = await instances.boundingBox();
+  expect(
+    menuBox.y + menuBox.height <= triggerBox.y - 4 ||
+      menuBox.y >= triggerBox.y + triggerBox.height + 4,
+  ).toBe(true);
   await instances.press('Enter');
   await expect.poll(async () => (await snapshot(page)).selectedInstanceId).toBe(ids[2]);
   await instances.press('ArrowUp');
@@ -92,6 +178,12 @@ try {
   await expect(instances).toHaveAttribute('aria-expanded', 'false');
 
   await page.getByRole('button', { name: '启动器设置', exact: true }).click();
+  await expect(page.locator('.settings-form > :first-child')).toHaveAccessibleName('启动器信息');
+  await expect(rail.getByRole('button', { name: '启动器信息' })).toHaveCount(0);
+  await page.locator('.appearance-settings > summary').click();
+  const preview = await page.getByLabel('背景预览').boundingBox();
+  const chooseImage = await page.getByRole('button', { name: '选择图片' }).boundingBox();
+  expect(chooseImage.y).toBeGreaterThanOrEqual(preview.y + preview.height);
   // Encode real files in Chromium; nativeImage format support differs by platform.
   const formats = await page.evaluate(() => {
     const canvas = document.createElement('canvas');
@@ -231,6 +323,7 @@ try {
   for (const name of [
     '游戏实例',
     '资源管理',
+    'AI 助手',
     '存档管理',
     '诊断与维护',
     '下载任务',
@@ -240,6 +333,7 @@ try {
     await page.getByRole('button', { name, exact: true }).click();
     await noHorizontalOverflow(page);
   }
+  await page.getByText('下载与网络', { exact: true }).click();
   const downloadSource = page.getByRole('combobox', { name: '下载源', exact: true });
   await page.getByText('下载源', { exact: true }).click();
   await expect(downloadSource).toHaveAttribute('aria-expanded', 'true');
@@ -252,7 +346,11 @@ try {
 
   const persisted = JSON.parse(await readFile(path.join(root, 'data/state.json'), 'utf8'));
   expect(persisted.appearance).toEqual({ backgroundId: imported, dim: 35, blur: 2 });
+  expect(persisted.sidebarOrder).toEqual(savedOrder);
   page = await launch();
+  await expect(page.locator('.sidebar .nav-item').nth(2)).toHaveAccessibleName('存档管理');
+  await expect(page.locator('.sidebar-bottom button').first()).toHaveAccessibleName('启动器设置');
+  await expect(page.locator('.sidebar-bottom button').last()).toHaveAccessibleName('账户管理');
   expect((await snapshot(page)).instances).toHaveLength(3);
   expect(await page.evaluate(() => window.kjmcl.backgroundImage())).toBe(image);
   await expect(page.locator('.app-background .background-scene > img')).toHaveAttribute(
@@ -260,6 +358,7 @@ try {
     image,
   );
   await page.getByRole('button', { name: '启动器设置', exact: true }).click();
+  await page.locator('.appearance-settings > summary').click();
   await page.getByRole('button', { name: '恢复默认', exact: true }).click();
   await expect.poll(() => page.evaluate(() => window.kjmcl.backgroundImage())).toBeNull();
   await expect(page.locator('.app-background .background-scene > img')).toHaveCount(0);
@@ -271,7 +370,7 @@ try {
   expect((await snapshot(page)).instances).toHaveLength(3);
   expect(errors).toEqual([]);
   console.log(
-    'PASS floating glass layout, compact navigation, accessible dropdown keyboard/viewport, PNG/JPEG import, unsupported WebP preservation, validation/cancel, image independence, appearance persistence and reset (disposable local fixtures)',
+    'PASS edge-to-edge pixel landscape, single-column appearance controls, compact navigation, accessible dropdown keyboard/viewport, PNG/JPEG import, unsupported WebP preservation, validation/cancel, image independence, appearance persistence and reset (disposable local fixtures)',
   );
 } finally {
   if (app) await app.close();

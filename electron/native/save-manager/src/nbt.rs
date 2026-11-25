@@ -123,7 +123,44 @@ pub fn packed(words: &[i64], index: usize, bits: usize, padded: bool) -> Option<
     }
     Some((n & ((1u64 << bits) - 1)) as usize)
 }
-pub fn surface(root: &Value) -> Result<(Vec<u8>, Vec<String>)> {
+pub struct Surface {
+    pub pixels: Vec<u8>,
+    pub heights: [i16; 256],
+    pub palette: Vec<String>,
+}
+const EMPTY: i16 = i16::MIN;
+fn legacy_block(id: u16) -> String {
+    let name = match id {
+        1 => "stone",
+        2 => "grass_block",
+        3 => "dirt",
+        4 => "cobblestone",
+        5 => "oak_planks",
+        7 => "bedrock",
+        8 | 9 => "water",
+        10 | 11 => "lava",
+        12 => "sand",
+        13 => "gravel",
+        17 | 162 => "oak_log",
+        18 | 161 => "oak_leaves",
+        20 => "glass",
+        24 => "sandstone",
+        35 => "wool",
+        45 => "bricks",
+        49 => "obsidian",
+        78 | 80 => "snow_block",
+        79 | 174 => "ice",
+        82 => "clay",
+        87 => "netherrack",
+        88 => "soul_sand",
+        89 => "glowstone",
+        110 => "mycelium",
+        121 => "end_stone",
+        _ => return format!("legacy:{id}"),
+    };
+    format!("minecraft:{name}")
+}
+pub fn surface(root: &Value) -> Result<Surface> {
     let chunk = data(root);
     let sections = list(get(chunk, "sections").or_else(|| get(chunk, "Sections")))
         .ok_or("区块没有支持的方块分节")?;
@@ -131,9 +168,50 @@ pub fn surface(root: &Value) -> Result<(Vec<u8>, Vec<String>)> {
     let mut sorted: Vec<_> = sections.iter().collect();
     sorted.sort_by_key(|s| -num(get(s, "Y")).unwrap_or(0));
     let mut pixels = vec![0u8; 16 * 16 * 4];
-    let mut filled = [false; 256];
+    let mut heights = [EMPTY; 256];
     let mut palette_names = Vec::new();
     for section in sorted {
+        let base_y = num(get(section, "Y")).unwrap_or(0).clamp(-128, 127) as i16 * 16;
+        // Pre-flattening Anvil stores numeric IDs with optional high nibbles in Add.
+        if let Some(Value::ByteArray(bytes)) = get(section, "Blocks") {
+            let extra = match get(section, "Add") {
+                None => None,
+                Some(Value::ByteArray(a)) if a.len() == 2048 => Some(a),
+                _ => return Err("旧版方块数据截断".into()),
+            };
+            if bytes.len() != 4096 {
+                return Err("旧版方块数据截断".into());
+            }
+            for col in 0..256 {
+                if heights[col] != EMPTY {
+                    continue;
+                }
+                for y in (0..16).rev() {
+                    let at = y * 256 + col;
+                    let high =
+                        extra.map_or(0, |a| ((a[at / 2] as u8 >> ((at % 2) * 4)) & 15) as u16);
+                    let id = (high << 8) | bytes[at] as u8 as u16;
+                    if id == 0 {
+                        continue;
+                    }
+                    let name = legacy_block(id);
+                    let c = color(&name);
+                    pixels[col * 4..col * 4 + 4].copy_from_slice(&[c[0], c[1], c[2], 255]);
+                    heights[col] = base_y + y as i16;
+                    if palette_names.len() < 256 && !palette_names.contains(&name) {
+                        palette_names.push(name);
+                    }
+                    break;
+                }
+            }
+            if palette_names.is_empty() {
+                palette_names.push("minecraft:air".into());
+            }
+            if heights.iter().all(|y| *y != EMPTY) {
+                break;
+            }
+            continue;
+        }
         let states = get(section, "block_states").unwrap_or(section);
         let Some(palette) = list(get(states, "palette").or_else(|| get(states, "Palette"))) else {
             continue;
@@ -159,7 +237,7 @@ pub fn surface(root: &Value) -> Result<(Vec<u8>, Vec<String>)> {
             for z in 0..16 {
                 for x in 0..16 {
                     let col = z * 16 + x;
-                    if filled[col] {
+                    if heights[col] != EMPTY {
                         continue;
                     }
                     let index = if names.len() == 1 {
@@ -175,22 +253,28 @@ pub fn surface(root: &Value) -> Result<(Vec<u8>, Vec<String>)> {
                     }
                     let c = color(name);
                     pixels[col * 4..col * 4 + 4].copy_from_slice(&[c[0], c[1], c[2], 255]);
-                    filled[col] = true;
+                    heights[col] = base_y + y as i16;
                 }
             }
         }
-        if filled.iter().all(|v| *v) {
+        if heights.iter().all(|v| *v != EMPTY) {
             break;
         }
     }
     if palette_names.is_empty() && !sections.is_empty() {
-        return Err("地表预览需要 Java 1.13+ 调色板格式".into());
+        return Err("无法识别区块分节的方块数据".into());
     }
-    Ok((pixels, palette_names))
+    Ok(Surface {
+        pixels,
+        heights,
+        palette: palette_names,
+    })
 }
 fn color(s: &str) -> [u8; 3] {
     if s.contains("water") {
         [54, 91, 175]
+    } else if s.contains("ice") {
+        [153, 193, 226]
     } else if s.contains("lava") {
         [244, 99, 24]
     } else if s.contains("snow") || s.contains("quartz") {

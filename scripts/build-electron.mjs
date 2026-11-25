@@ -1,7 +1,7 @@
 import { build } from 'esbuild';
 import './build-native.mjs';
 await build({
-  entryPoints: ['electron/main.ts', 'electron/preload.ts'],
+  entryPoints: ['electron/main.ts', 'electron/preload.ts', 'electron/dialog-preload.ts'],
   bundle: true,
   platform: 'node',
   format: 'cjs',
