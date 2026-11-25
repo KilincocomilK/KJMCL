@@ -3,8 +3,11 @@
 !define MUI_INSTFILESPAGE_COLORS "F4F0E6 20231F"
 !define MUI_WELCOMEFINISHPAGE_BITMAP_STRETCH "AspectFitHeight"
 !define MUI_UNWELCOMEFINISHPAGE_BITMAP_STRETCH "AspectFitHeight"
-!define MUI_CUSTOMFUNCTION_GUIINIT kjmclWizardInit
-!define MUI_CUSTOMFUNCTION_UNGUIINIT un.kjmclWizardInit
+!ifdef BUILD_UNINSTALLER
+  !define MUI_CUSTOMFUNCTION_UNGUIINIT un.kjmclWizardInit
+!else
+  !define MUI_CUSTOMFUNCTION_GUIINIT kjmclWizardInit
+!endif
 
 Var kjmclBodyFont
 Var kjmclTitleFont
