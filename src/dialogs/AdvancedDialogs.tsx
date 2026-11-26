@@ -1,7 +1,14 @@
 import { Select } from '../Select';
 import { useEffect, useRef, useState } from 'react';
 import { Copy, FolderOpen, Upload, Download, RefreshCw, ArrowUpRight } from 'lucide-react';
-import type { Account, Instance, MinecraftScan, PackReview, GameLayout } from '../../shared/types';
+import type {
+  Account,
+  Instance,
+  MinecraftScan,
+  PackReview,
+  GameLayout,
+  Task,
+} from '../../shared/types';
 import { api } from '../api';
 import { Field, Modal } from '../components';
 import type { Run } from '../ui';
@@ -47,11 +54,16 @@ export function ImportDialog({
   scan,
   run,
   onClose,
+  migration,
+  task,
 }: {
   scan: MinecraftScan;
   run: Run;
   onClose: () => void;
+  migration?: { onImported: (folderId: string) => void };
+  task?: Task;
 }) {
+  const [mode, setMode] = useState<'link' | 'copy'>('link');
   const [name, setName] = useState(
       scan.root.split(/[\\/]/).filter(Boolean).at(-1)?.slice(0, 80) || '外部游戏',
     ),
@@ -61,7 +73,7 @@ export function ImportDialog({
     [busy, setBusy] = useState(false);
   return (
     <Modal
-      title="添加游戏文件夹"
+      title={migration ? '导入游戏数据' : '添加游戏文件夹'}
       wide
       onClose={() => {
         if (!busy) onClose();
@@ -72,7 +84,7 @@ export function ImportDialog({
           e.preventDefault();
           setBusy(true);
           const id = await run(() =>
-            api.importMinecraft({
+            (mode === 'copy' ? api.copyLauncher : api.importMinecraft)({
               selectionId: scan.selectionId,
               name,
               layouts: Object.entries(layouts).map(([versionId, layout]) => ({
@@ -82,48 +94,105 @@ export function ImportDialog({
             }),
           );
           setBusy(false);
-          if (id) onClose();
+          if (id) {
+            migration?.onImported(id);
+            onClose();
+          }
         }}
       >
         <div className="form-body">
           <div className="path-value">{scan.root}</div>
+          {migration && (
+            <Field label="导入方式">
+              <Select
+                value={mode}
+                disabled={busy}
+                onChange={(e) => setMode(e.target.value as typeof mode)}
+              >
+                <option value="link">沿用原目录</option>
+                <option value="copy">复制到新位置</option>
+              </Select>
+            </Field>
+          )}
           <Field label="文件夹名称">
-            <input required maxLength={80} value={name} onChange={(e) => setName(e.target.value)} />
+            <input
+              required
+              disabled={busy}
+              maxLength={80}
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+            />
           </Field>
           <p className="muted">
-            发现 {scan.versions.length} 个版本。只添加索引，游戏和存档留在原位置。
+            {scan.versions.length
+              ? '发现 ' + scan.versions.length + ' 个版本。'
+              : '仅发现游戏数据。恢复版本文件后，可在「游戏实例」刷新。'}
+            {mode === 'link'
+              ? '游戏和存档留在原位置，两个启动器共享更改。'
+              : '请先关闭游戏。副本包含游戏文件和兼容配置，账户需重新登录。'}
           </p>
-          <div className="folder-import-versions">
-            {scan.versions.map((v) => (
-              <div className="folder-import-version" key={v.id}>
-                <strong>{v.name}</strong>
-                <Select
-                  aria-label={'运行目录 · ' + v.id}
-                  value={layouts[v.id]}
-                  onChange={(e) => setLayouts({ ...layouts, [v.id]: e.target.value as GameLayout })}
-                >
-                  <option value="auto">沿用原配置 / 自动识别</option>
-                  <option value="shared">共享游戏文件夹</option>
-                  <option value="version">版本独立目录</option>
-                </Select>
-                <small className="path-value">
-                  {layouts[v.id] === 'shared'
-                    ? scan.root
-                    : layouts[v.id] === 'version'
-                      ? scan.root +
-                        (scan.root.includes('\\') ? '\\versions\\' : '/versions/') +
-                        v.id
-                      : v.gameDir}
-                </small>
-                {v.error && <small className="inline-error">{v.error}</small>}
+          {mode === 'copy' && (
+            <details>
+              <summary>副本包含哪些内容？</summary>
+              <p>
+                版本、运行库、资源、存档、模组、截图、资源包及常见游戏设置。兼容的运行目录、窗口大小和内存设置会随版本导入。
+              </p>
+              <small>原启动器的账户、启动命令和未知私有目录会留在原位置。</small>
+            </details>
+          )}
+          {scan.versions.length > 0 && (
+            <details open={!migration || scan.versions.some((v) => v.error) || undefined}>
+              <summary>版本与运行目录{scan.versions.some((v) => v.error) && ' · 需要检查'}</summary>
+              <div className="folder-import-versions">
+                {scan.versions.map((v) => (
+                  <div className="folder-import-version" key={v.id}>
+                    <strong>{v.name}</strong>
+                    <Select
+                      aria-label={'运行目录 · ' + v.id}
+                      disabled={busy}
+                      value={layouts[v.id]}
+                      onChange={(e) =>
+                        setLayouts({ ...layouts, [v.id]: e.target.value as GameLayout })
+                      }
+                    >
+                      <option value="auto">沿用原配置 / 自动识别</option>
+                      <option value="shared">共享游戏文件夹</option>
+                      <option value="version">版本独立目录</option>
+                    </Select>
+                    <small className="path-value">
+                      {layouts[v.id] === 'shared'
+                        ? scan.root
+                        : layouts[v.id] === 'version'
+                          ? scan.root +
+                            (scan.root.includes('\\') ? '\\versions\\' : '/versions/') +
+                            v.id
+                          : v.gameDir}
+                    </small>
+                    {v.error && <small className="inline-error">{v.error}</small>}
+                  </div>
+                ))}
               </div>
-            ))}
-          </div>
+            </details>
+          )}
         </div>
         <div className="modal-footer">
+          {busy && task && (
+            <>
+              <small role="status">{task.detail}</small>
+              <button type="button" onClick={() => void run(() => api.cancelTask(task.id))}>
+                取消任务
+              </button>
+            </>
+          )}
           <button className="primary" disabled={busy}>
             <FolderOpen size={16} />
-            {busy ? '正在建立索引' : '添加文件夹'}
+            {busy
+              ? mode === 'copy'
+                ? '正在复制'
+                : '正在建立索引'
+              : mode === 'copy'
+                ? '选择副本位置'
+                : '添加文件夹'}
           </button>
         </div>
       </form>

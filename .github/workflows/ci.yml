@@ -1,6 +1,7 @@
 name: Build and test
 on:
   push:
+    branches: ['**']
   pull_request:
   workflow_dispatch:
 permissions:
@@ -14,6 +15,8 @@ jobs:
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
       - name: Use a physical temporary directory for macOS fixtures
         if: runner.os == 'macOS'
         shell: bash
@@ -32,6 +35,7 @@ jobs:
           distribution: temurin
           java-version: 21
       - run: npm ci
+      - run: npm run icons:check
       - uses: dtolnay/rust-toolchain@stable
       - run: npm run test:native
       - run: npm test
@@ -39,7 +43,9 @@ jobs:
       - run: npm run build
       - name: Desktop integration (Windows and macOS)
         if: runner.os != 'Linux'
+        shell: bash
         run: |
+          node scripts/welcome-desktop-smoke.mjs
           node scripts/desktop-smoke.mjs
           node scripts/resource-desktop-smoke.mjs
           node scripts/save-desktop-smoke.mjs
@@ -61,10 +67,93 @@ jobs:
       - name: Uninstall retention flow (Windows)
         if: runner.os == 'Windows'
         run: node scripts/uninstall-smoke.mjs
-      - run: npx electron-builder --dir
+      - run: npx electron-builder --dir --publish never
         env:
           CSC_IDENTITY_AUTO_DISCOVERY: 'false'
-      - uses: actions/upload-artifact@v4
+  release-draft:
+    needs: build
+    if: github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write # GitHub only exposes drafts to users with push access.
+    outputs:
+      id: ${{ steps.find.outputs.id }}
+      tag: ${{ steps.find.outputs.tag }}
+    steps:
+      - uses: actions/checkout@v4
         with:
-          name: KJMCL-${{ runner.os }}
-          path: release/
+          persist-credentials: false
+      - id: find
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          tag="v$(node -p "require('./package.json').version")"
+          id=$(gh api --paginate "repos/$GITHUB_REPOSITORY/releases?per_page=100" |
+            jq -r --arg tag "$tag" --arg sha "$GITHUB_SHA" '.[] | select(.draft and .tag_name == $tag and .target_commitish == $sha) | .id')
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+          echo "id=$id" >> "$GITHUB_OUTPUT"
+          if [[ -z "$id" ]]; then echo "No matching release draft for $tag at $GITHUB_SHA."; fi
+
+  stage-packages:
+    needs: release-draft
+    if: needs.release-draft.outputs.id != ''
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-latest, macos-latest, ubuntu-latest]
+    runs-on: ${{ matrix.os }}
+    permissions:
+      contents: write
+    env:
+      DRAFT_ID: ${{ needs.release-draft.outputs.id }}
+      RELEASE_TAG: ${{ needs.release-draft.outputs.tag }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .node-version
+          cache: npm
+      - run: npm install --global npm@11.19.1
+      - uses: dtolnay/rust-toolchain@stable
+      - run: npm ci
+      - run: npm run build
+      - name: Build native installers
+        shell: bash
+        env:
+          CSC_IDENTITY_AUTO_DISCOVERY: 'false'
+        run: |
+          case "$RUNNER_OS" in
+            Windows) npx electron-builder --win nsis portable --publish never ;;
+            macOS) npx electron-builder --mac dmg --publish never ;;
+            Linux) npx electron-builder --linux AppImage deb --publish never ;;
+          esac
+      - name: Stage this platform in the matching draft
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          version="${RELEASE_TAG#v}"
+          cd "release/$version"
+          shopt -s nullglob
+          case "$RUNNER_OS" in
+            Windows)
+              files=("KJMCL-$version.exe" "KJMCL-Setup-$version.exe" "KJMCL-Setup-$version.exe.blockmap" latest.yml)
+              ;;
+            macOS)
+              packages=(*.dmg)
+              [[ ${#packages[@]} -eq 1 ]]
+              files=("${packages[@]}" *.dmg.blockmap latest-mac*.yml)
+              ;;
+            Linux)
+              images=(*.AppImage)
+              debs=(*.deb)
+              [[ ${#images[@]} -eq 1 && ${#debs[@]} -eq 1 ]]
+              files=("${images[@]}" "${debs[@]}" *.AppImage.blockmap latest-linux*.yml)
+              ;;
+          esac
+          for file in "${files[@]}"; do test -s "$file"; done
+          gh api "repos/$GITHUB_REPOSITORY/releases/$DRAFT_ID" |
+            jq -e --arg tag "$RELEASE_TAG" --arg sha "$GITHUB_SHA" '.draft and .tag_name == $tag and .target_commitish == $sha'
+          gh release upload "$RELEASE_TAG" "${files[@]}" --repo "$GITHUB_REPOSITORY" --clobber

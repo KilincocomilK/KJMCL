@@ -1,6 +1,6 @@
 import { VERSION } from '../../shared/version';
 import { fetch, ProxyAgent, type Dispatcher, type FormData } from 'undici';
-import { mkdir, rename, rm } from 'node:fs/promises';
+import { mkdir, rename, rm, stat } from 'node:fs/promises';
 import { createWriteStream } from 'node:fs';
 import { Readable, Transform } from 'node:stream';
 import { pipeline } from 'node:stream/promises';
@@ -17,6 +17,7 @@ class DownloadHttpError extends Error {
     super(`下载失败 (${status}) · ${new URL(responseUrl).hostname}`);
   }
 }
+class DownloadIntegrityError extends Error {}
 
 export class Network {
   private proxy = '';
@@ -94,18 +95,31 @@ export class Network {
       algorithm?: string;
       size?: number;
       maxBytes?: number;
+      timeoutMs?: number;
       allowedOrigins?: readonly string[];
       referer?: string;
+      /** Ordered alternate HTTPS sources for the same hash-verified public artifact. */
+      fallbackUrls?: readonly string[];
       onProgress?: (fraction: number) => void;
     },
   ) {
-    if (ctx.hash && (await exists(dest)) && (await hashFile(dest, ctx.algorithm)) === ctx.hash) {
+    ctx.signal.throwIfAborted();
+    if (
+      ctx.hash &&
+      (await exists(dest)) &&
+      (ctx.size === undefined || (await stat(dest)).size === ctx.size) &&
+      (await hashFile(dest, ctx.algorithm)) === ctx.hash
+    ) {
       ctx.onProgress?.(1);
       return;
     }
     await mkdir(path.dirname(dest), { recursive: true });
     const tmp = dest + '.' + randomUUID() + '.part';
     const preferred = ctx.allowedOrigins ? url : this.url(url);
+    const alternates =
+      ctx.hash && !ctx.allowedOrigins && !ctx.referer && ctx.fallbackUrls
+        ? [...new Set(ctx.fallbackUrls)].filter((candidate) => candidate !== preferred)
+        : [];
     let source = preferred;
     let retries = 0;
     for (;;) {
@@ -117,7 +131,7 @@ export class Network {
           target,
           { signal: ctx.signal, headers, redirect: ctx.allowedOrigins ? 'manual' : 'follow' },
           false,
-          30 * 60 * 1000,
+          ctx.timeoutMs ?? 30 * 60 * 1000,
         );
         if (ctx.allowedOrigins) {
           for (let i = 0; [301, 302, 303, 307, 308].includes(r.status); i++) {
@@ -154,7 +168,7 @@ export class Network {
           new Transform({
             transform(chunk, _enc, cb) {
               count += chunk.length;
-              if (count > limit) return cb(new Error('下载文件超过预期大小'));
+              if (count > limit) return cb(new DownloadIntegrityError('下载文件超过预期大小'));
               if (ctx.onProgress && total > 0 && performance.now() - reportedAt >= 160) {
                 reportedAt = performance.now();
                 ctx.onProgress(Math.min(0.999, count / total));
@@ -165,15 +179,30 @@ export class Network {
           createWriteStream(tmp),
           { signal: ctx.signal },
         );
-        if (ctx.size !== undefined && count !== ctx.size) throw new Error('文件大小校验失败');
+        if (ctx.size !== undefined && count !== ctx.size)
+          throw new DownloadIntegrityError('文件大小校验失败');
         if (ctx.hash && (await hashFile(tmp, ctx.algorithm)) !== ctx.hash)
-          throw new Error('文件哈希校验失败');
+          throw new DownloadIntegrityError('文件哈希校验失败');
         await rename(tmp, dest);
         ctx.onProgress?.(1);
         return;
       } catch (e) {
         await rm(tmp, { force: true });
         ctx.signal.throwIfAborted();
+        if (ctx.fallbackUrls?.length) {
+          const remoteFailure =
+            e instanceof DownloadHttpError ||
+            e instanceof TypeError ||
+            (e instanceof Error && e.name === 'TimeoutError') ||
+            String((e as NodeJS.ErrnoException).code || '').startsWith('UND_ERR_');
+          if ((remoteFailure || e instanceof DownloadIntegrityError) && alternates.length) {
+            source = alternates.shift()!;
+            continue;
+          }
+          if (remoteFailure && !(e instanceof DownloadHttpError))
+            throw new Error('无法连接下载源 · ' + new URL(source).hostname, { cause: e });
+          if (remoteFailure) throw e;
+        }
         if (
           preferred !== url &&
           e instanceof DownloadHttpError &&

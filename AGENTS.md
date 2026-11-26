@@ -2,6 +2,7 @@
 
 - KJMCL is the project at this repository root. `SJMCL/` is an excluded reference checkout; never modify it or copy implementation code from it.
 - Preserve the Chinese, rectangular black/orange interface. Keep interface copy short and useful. Do not add sample accounts, fake download progress, or fake installed instances to production state.
+- Maintain the local drawing catalogue at `docs/icon-atlas.html` whenever launcher icons or their functions change. Keep existing artwork IDs stable, update Chinese descriptions and Canvas/CSS references in `tools/icon-atlas/labels.mjs`, then run `npm run icons` and include the generated page. The development launcher watches the catalogue, and `npm run icons:check` checks for stale output.
 - Renderer code must remain sandboxed. Extend `shared/types.ts`, `shared/schema.ts`, the named preload bridge, and main-process handlers together. Keep filesystem access, secrets, networking, and child processes in `electron/`.
 - Split UI pages in `src/pages/` and domain services in `electron/core/`. Version persisted state and provide migrations when changing its schema. Never silently reset user state.
 - Keep Java launches shell-free. Preserve OS path handling, architecture rules, archive path checks, cryptographic download verification, encrypted credentials, and redacted logging.

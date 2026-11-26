@@ -13,7 +13,7 @@ import {
 import path from 'node:path';
 import os from 'node:os';
 import { createHash } from 'node:crypto';
-import { Store } from '../electron/core/store';
+import { STATE_VERSION, Store } from '../electron/core/store';
 import { GameFolders, resolveExternalVersion } from '../electron/core/game-folders';
 import { assertOwned, Instances, claimDirectory } from '../electron/core/instances';
 import { Minecraft } from '../electron/core/minecraft';
@@ -266,7 +266,7 @@ it('migrates v4 without dropping favorites, copied games, settings or the origin
   delete (old as any).gameFolders;
   await atomicJson(path.join(store.root, 'state.json'), old);
   const reopened = new Store(store.root);
-  expect(reopened.data.schemaVersion).toBe(9);
+  expect(reopened.data.schemaVersion).toBe(STATE_VERSION);
   expect(reopened.data.gameFolders).toEqual([]);
   expect(reopened.data.favorites[0].projectId).toBe('kept');
   expect(JSON.parse(await readFile(path.join(store.root, 'state.json.v4.bak'), 'utf8'))).toEqual(

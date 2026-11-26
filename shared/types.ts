@@ -2,6 +2,23 @@ import type { AssistantApi } from './assistant';
 import type { SidebarEntry } from './navigation';
 export type Loader = 'vanilla' | 'fabric' | 'quilt' | 'forge' | 'neoforge';
 export type GameLayout = 'auto' | 'shared' | 'version';
+export type WelcomeProgress =
+  | { step: 'start' | 'done' }
+  | { step: 'folders' | 'java' | 'account' | 'assistant' | 'finish'; player: 'new' | 'returning' };
+export const welcomeSections = [
+  'newDirectory',
+  'importDirectory',
+  'java',
+  'account',
+  'assistant',
+] as const;
+export type WelcomeSection = (typeof welcomeSections)[number];
+export function welcomeSection(progress: WelcomeProgress): WelcomeSection | undefined {
+  if (progress.step === 'folders')
+    return progress.player === 'new' ? 'newDirectory' : 'importDirectory';
+  if (progress.step === 'java' || progress.step === 'account' || progress.step === 'assistant')
+    return progress.step;
+}
 export interface GameFolder {
   id: string;
   name: string;
@@ -263,6 +280,8 @@ export interface VersionSummary {
   sha1?: string;
 }
 export interface Snapshot {
+  welcome?: WelcomeProgress;
+  welcomeConfigured?: WelcomeSection[];
   sidebarOrder?: SidebarEntry[];
   assistantPending?: number;
   appearance?: Appearance;
@@ -305,6 +324,11 @@ export interface MinecraftScan {
   selectionId: string;
   root: string;
   versions: { id: string; name: string; gameDir: string; layout: GameLayout; error?: string }[];
+}
+export interface MigrationSource {
+  id: string;
+  root: string;
+  launchers: string[];
 }
 export interface PackOptions {
   id: string;
@@ -410,6 +434,9 @@ export interface TerracottaState {
   members: { name: string; kind: string; vendor: string }[];
 }
 export interface Api extends AssistantApi {
+  setWelcome(progress: WelcomeProgress): Promise<void>;
+  markWelcomeConfigured(section: WelcomeSection): Promise<void>;
+  prepareGameDirectory(choice: 'default' | 'choose'): Promise<string | null>;
   projectionAssets(
     value: import('./projection-assets').ProjectionAssetsRequest,
   ): Promise<import('./projection-assets').ProjectionAssets>;
@@ -638,6 +665,8 @@ export interface Api extends AssistantApi {
   logs(id: string): Promise<LogLine[]>;
   exportLogs(id: string): Promise<void>;
   java(): Promise<JavaRuntime[]>;
+  welcomeJavaInfo(): Promise<{ available: JavaRuntime[]; memoryMb: number }>;
+  configureWelcomeJava(input: { major: number; allowInstall: boolean }): Promise<string>;
   pickJava(): Promise<string | null>;
   installJava(major: number): Promise<string>;
   mods(id: string): Promise<ModFile[]>;
@@ -662,6 +691,10 @@ export interface Api extends AssistantApi {
   }): Promise<string>;
   relocateInstance(value: { id: string; directory: string }): Promise<string>;
   scanMinecraft(): Promise<MinecraftScan | null>;
+  discoverLaunchers(): Promise<MigrationSource[]>;
+  pickLauncher(): Promise<MigrationSource[] | null>;
+  previewLauncher(id: string): Promise<MinecraftScan>;
+  copyLauncher(value: Parameters<Api['importMinecraft']>[0]): Promise<string | null>;
   importMinecraft(value: {
     selectionId: string;
     name: string;

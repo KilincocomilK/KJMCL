@@ -7,6 +7,7 @@ import { Store } from './store';
 import { atomicJson, json, inside, extractZip, hashFile } from './files';
 import { assertExternal, checkGamePath, resolveExternalVersion } from './game-folders';
 import { fileProgress, type Work } from './tasks';
+import { resolveLoggingFile } from './logging-config';
 import type { Loader, VersionSummary } from '../../shared/types';
 export interface Rule {
   action: 'allow' | 'disallow';
@@ -173,16 +174,14 @@ export class Minecraft {
     const logging = version.logging?.client;
     if (!logging) return undefined;
     const f = logging.file;
-    const dest = inside(path.join(this.store.runtime(id), 'assets', 'log_configs'), f.id);
-    if (this.store.instance(id).external) await checkGamePath(dest, true);
     try {
-      await this.net.download(f.url, dest, { signal, hash: f.sha1, size: f.size });
+      return await resolveLoggingFile(this.store, this.net, id, f, signal);
     } catch (error) {
+      signal.throwIfAborted();
       throw new Error(
-        `无法准备游戏日志配置 ${f.id}：${error instanceof Error ? error.message : String(error)}`,
+        `无法准备游戏日志配置 ${f?.id ?? ''}：${error instanceof Error ? error.message : String(error)}`,
       );
     }
-    return dest;
   }
   async metadata(id: string, signal: AbortSignal) {
     const i = this.store.instance(id);

@@ -3,7 +3,7 @@ import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import os from 'node:os';
 import { AppearanceManager, backgroundDimensions } from '../electron/core/appearance';
-import { Store } from '../electron/core/store';
+import { STATE_VERSION, Store } from '../electron/core/store';
 import { schemas } from '../shared/schema';
 import { DEFAULT_SIDEBAR_ORDER } from '../shared/navigation';
 
@@ -148,7 +148,7 @@ describe('appearance contract and migration', () => {
     const original = { ...data, schemaVersion: 5 };
     await writeFile(path.join(root, 'state.json'), JSON.stringify(original));
     const next = new Store(root);
-    expect(next.data.schemaVersion).toBe(9);
+    expect(next.data.schemaVersion).toBe(STATE_VERSION);
     expect(next.data.appearance).toEqual({ dim: 32, blur: 0 });
     expect(next.data.accounts).toEqual(original.accounts);
     expect(next.data.gameFolders).toEqual(original.gameFolders);
@@ -175,7 +175,12 @@ it('migrates v7 with a backup and persists only complete sidebar permutations', 
   expect(JSON.parse(await readFile(file + '.v7.bak', 'utf8'))).toEqual(original);
   const sorted = [...order].reverse();
   migrated.setSidebarOrder(sorted);
-  expect(new Store(root).data).toEqual({ ...original, schemaVersion: 9, sidebarOrder: sorted });
+  expect(new Store(root).data).toEqual({
+    ...original,
+    schemaVersion: STATE_VERSION,
+    welcome: { step: 'done' },
+    sidebarOrder: sorted,
+  });
   for (const candidate of [
     order.slice(1),
     [...order.slice(1), 'home'],
@@ -201,7 +206,12 @@ it('pins the two footer entries on v8 migration and preserves the other position
   };
   const file = path.join(root, 'state.json');
   await writeFile(file, JSON.stringify(old));
-  expect(new Store(root).data).toEqual({ ...old, schemaVersion: 9, sidebarOrder: movable });
+  expect(new Store(root).data).toEqual({
+    ...old,
+    schemaVersion: STATE_VERSION,
+    welcome: { step: 'done' },
+    sidebarOrder: movable,
+  });
   expect(new Store(root).data.sidebarOrder).toEqual(movable);
   expect(JSON.parse(await readFile(file + '.v8.bak', 'utf8'))).toEqual(old);
 });

@@ -17,7 +17,7 @@ import { atomicJson, hashFile, inside, json, exists } from './files';
 import { contains } from './instances';
 import { STATE_VERSION, supportsStateVersion, type Store } from './store';
 import type { Work } from './tasks';
-import type { StorageInfo } from '../../shared/types';
+import { welcomeSection, type StorageInfo } from '../../shared/types';
 
 const marker = '.kjmcl-data.json';
 const directories = new Set([
@@ -338,7 +338,13 @@ export class Storage {
         if ((await hashFile(inside(source, f.file), 'sha256')) !== f.hash)
           throw new Error('原文件在迁移期间变化：' + f.file);
       }
-      await atomicJson(path.join(target, 'state.json'), remapState(store.data, source, target));
+      const targetState = remapState(store.data, source, target);
+      if (store.data.welcome.step === 'folders') {
+        const section = welcomeSection(store.data.welcome);
+        if (section && !targetState.welcomeConfigured.includes(section))
+          targetState.welcomeConfigured.push(section);
+      }
+      await atomicJson(path.join(target, 'state.json'), targetState);
       ctx.signal.throwIfAborted();
       const migration: Migration = {
         version: 1,

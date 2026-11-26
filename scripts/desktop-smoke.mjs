@@ -8,6 +8,7 @@ import { mkdtemp, mkdir, writeFile, readFile, rm, readdir } from 'node:fs/promis
 import os from 'node:os';
 import path from 'node:path';
 import { execFileSync } from 'node:child_process';
+import { randomUUID } from 'node:crypto';
 import AdmZip from 'adm-zip';
 const root = await mkdtemp(path.join(os.tmpdir(), 'kjmcl-desktop-'));
 await mkdir(path.resolve('.local'), { recursive: true });
@@ -34,7 +35,25 @@ try {
   await page.getByPlaceholder('Player', { exact: true }).fill('KJMC_Tester');
   await page.getByRole('button', { name: '添加账户', exact: true }).click();
   await expect(page.getByRole('heading', { name: 'KJMC_Tester' })).toBeVisible();
+  await page.getByRole('heading', { name: '第三方账户', exact: true }).click();
+  await expect(page.getByText('https://littleskin.cn/api/yggdrasil', { exact: true })).toBeVisible();
+  await page.getByLabel('密码', { exact: true }).fill('test-only');
+  await selectLauncherOption(page, '认证服务', 'https://api.kjmc.top/api/yggdrasil');
+  await expect(page.getByLabel('密码', { exact: true })).toHaveValue('');
+  await selectLauncherOption(page, '认证服务', '');
+  await expect(page.getByLabel('认证 API 根地址')).toBeVisible();
+  await page.getByRole('heading', { name: 'Microsoft 账户', exact: true }).click();
+  const idField = page.getByLabel('Microsoft Client ID', { exact: true });
+  const savedId = () => page.evaluate(async () => (await window.kjmcl.snapshot()).settings.microsoftClientId);
+  for (const id of [randomUUID(), randomUUID(), '']) {
+    if (!(await idField.isVisible())) await page.getByText('应用客户端 ID', { exact: true }).click();
+    await idField.fill(id);
+    await page.getByRole('button', { name: '保存客户端 ID' }).click();
+    await expect.poll(savedId).toBe(id);
+    await expect(idField).toBeEnabled();
+  }
   await page.getByRole('button', { name: '启动器设置', exact: true }).click();
+  await expect(page.locator('.settings-form')).not.toContainText(/Microsoft Client ID|第三方账户登录/);
   await page.getByText('游戏运行', { exact: true }).click();
   await page.getByRole('button', { name: '检测', exact: true }).click();
   await expect(page.locator('.java-list')).toBeVisible({ timeout: 20000 });

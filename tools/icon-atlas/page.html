@@ -1,0 +1,52 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; font-src data:; img-src data: blob:; base-uri 'none'; object-src 'none'; form-action 'none'">
+  <title>KJMCL 图标图鉴</title>
+  <style>@font-face{font-family:KJPixel;src:url(data:font/woff2;base64,@@FONT@@) format('woff2');font-display:swap}@@CSS@@</style>
+</head>
+<body>
+  <header class="mast">
+    <div class="mast-inner">
+      <div class="identity"><img id="brand" alt="" width="28" height="28"><b>KJMCL</b><span>美术工作台</span></div>
+      <div class="file-actions">
+        <button id="directory" hidden>画稿目录</button>
+        <button id="restore">导入备份</button><input id="backup-file" type="file" accept=".zip,application/zip" hidden>
+        <button id="export" class="accent" disabled>导出画稿</button>
+      </div>
+    </div>
+  </header>
+  <main class="layout">
+    <div class="heading">
+      <div><h1>图标图鉴</h1><p id="release"></p></div>
+      <div class="progress-box"><div><span>重绘进度</span><strong id="count"></strong></div><progress id="progress" value="0" max="1" aria-label="重绘进度"></progress></div>
+    </div>
+    <aside class="rail">
+      <h2>图标类别</h2><nav id="groups" aria-label="图标类别"></nav>
+      <div class="rail-filter"><label for="area">使用位置</label><select id="area"><option value="">全部页面</option></select></div>
+      <button id="references">下载全部参考图</button>
+      <p class="storage-note" id="storage-note">画稿保存在此浏览器，可导出 ZIP 备份。</p>
+    </aside>
+    <section class="collection" aria-label="图标清单">
+      <div class="filters">
+        <label class="search"><svg aria-hidden="true" width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="10" cy="10" r="6"/><path d="m15 15 6 6"/></svg>
+          <input id="search" type="search" aria-label="搜索图标" placeholder="搜索图标、功能或页面" autocomplete="off">
+        </label>
+        <div class="states" role="group" aria-label="绘制状态">
+          <button data-state="all" aria-pressed="true">全部</button><button data-state="todo" aria-pressed="false">待绘</button><button data-state="done" aria-pressed="false">已上传</button>
+        </div>
+      </div>
+      <div id="cards"></div>
+    </section>
+    <footer><span>KJMCL</span><button id="licenses">字体与图标许可</button></footer>
+  </main>
+  <dialog id="detail"><div class="dialog-head"><h2 id="detail-title"></h2><button class="close" data-close aria-label="关闭详情">×</button></div><div id="detail-body"></div></dialog>
+  <dialog id="legal"><div class="dialog-head"><h2>字体与图标许可</h2><button class="close" data-close aria-label="关闭许可">×</button></div><pre>@@LICENSES@@</pre></dialog>
+  <dialog id="confirm"><div class="dialog-head"><h2 id="confirm-title">导入备份</h2></div><p id="confirm-text"></p><div class="confirm-actions"><button id="no">取消</button><button class="accent" id="yes">确认</button></div></dialog>
+  <div id="notice" role="status" aria-live="polite" hidden></div>
+  <script type="application/json" id="inventory">@@CATALOG@@</script>
+  <script>@@JAVASCRIPT@@</script>
+</body>
+</html>

@@ -68,6 +68,7 @@ it('migrates managed backgrounds and schema backups with the data directory', as
   await writeFile(path.join(store.root, 'state.json.v7.bak'), 'before-sidebar');
   const sidebarOrder = [...store.data.sidebarOrder].reverse();
   store.setSidebarOrder(sidebarOrder);
+  store.setWelcome({ step: 'folders', player: 'new' });
   await storage.migrate(store, target, ctx());
   expect(await readFile(path.join(target, 'appearance', 'background.png'), 'utf8')).toBe(
     'managed-image',
@@ -75,6 +76,7 @@ it('migrates managed backgrounds and schema backups with the data directory', as
   expect(await readFile(path.join(target, 'state.json.v6.bak'), 'utf8')).toBe('state-backup');
   expect(await readFile(path.join(target, 'state.json.v7.bak'), 'utf8')).toBe('before-sidebar');
   expect(new Store(target).data.sidebarOrder).toEqual(sidebarOrder);
+  expect(new Store(target).data.welcomeConfigured).toEqual(['newDirectory']);
 });
 it('moves assistant conversations, settings and encrypted credential files together', async () => {
   const { store, storage, target } = await fixture();

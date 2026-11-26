@@ -1,6 +1,6 @@
 import path from 'node:path';
 import os from 'node:os';
-import { readdir, mkdir, chmod, realpath, stat } from 'node:fs/promises';
+import { readdir, mkdir, mkdtemp, rename, rm, realpath, stat } from 'node:fs/promises';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import { exists, extractZip } from './files';
@@ -80,18 +80,26 @@ export class Java {
   ) {}
   async discover() {
     const exe = process.platform === 'win32' ? 'java.exe' : 'java';
-    const candidates = new Set<string>(['java']);
+    const candidates = new Set<string>();
     if (process.env.JAVA_HOME) candidates.add(path.join(process.env.JAVA_HOME, 'bin', exe));
     if (this.store.data.settings.javaPath) candidates.add(this.store.data.settings.javaPath);
     for (const i of this.store.data.instances) if (i.javaPath) candidates.add(i.javaPath);
-    for (const p of (process.env.PATH ?? '').split(path.delimiter))
-      if (await exists(path.join(p, exe))) candidates.add(path.join(p, exe));
+    for (const part of (process.env.PATH ?? '').split(path.delimiter)) {
+      const dir = part.replace(/^"(.*)"$/, '$1');
+      if (!path.isAbsolute(dir)) continue;
+      const file = path.join(dir, exe);
+      // Running Apple's system stub can open a native install dialog during automatic detection.
+      if (process.platform === 'darwin' && file === '/usr/bin/java') continue;
+      if (await exists(file)) candidates.add(file);
+    }
     const roots = [
       path.join(this.store.root, 'runtimes'),
       ...(process.platform === 'win32'
         ? [
             path.join(process.env.ProgramFiles ?? 'C:/Program Files', 'Java'),
             path.join(process.env.ProgramFiles ?? 'C:/Program Files', 'Eclipse Adoptium'),
+            path.join(process.env.ProgramFiles ?? 'C:/Program Files', 'Microsoft'),
+            path.join(process.env.ProgramFiles ?? 'C:/Program Files', 'Zulu'),
           ]
         : process.platform === 'darwin'
           ? [
@@ -128,12 +136,21 @@ export class Java {
     const arch = process.arch === 'arm64' ? 'aarch64' : 'x64';
     if (!['x64', 'arm64'].includes(process.arch)) throw new Error('暂不支持此 CPU 架构的自动安装');
     ctx.progress(2, '查询 Java 运行时');
-    const releases = await this.net.json<any[]>(
-      `https://api.adoptium.net/v3/assets/latest/${major}/hotspot?architecture=${arch}&image_type=jre&os=${platform}`,
+    const releases = await this.net.json<
+      {
+        binary: { image_type: string; package: { link: string; checksum: string; size: number } };
+      }[]
+    >(
+      `https://api.adoptium.net/v3/assets/latest/${major}/hotspot?architecture=${arch}&os=${platform}`,
       { signal: ctx.signal },
     );
-    const pkg = releases[0]?.binary?.package;
-    if (!pkg) throw new Error('未找到匹配的 Java');
+    const pkg = (
+      releases.find((r) => r.binary.image_type === 'jre') ??
+      releases.find((r) => r.binary.image_type === 'jdk')
+    )?.binary.package;
+    if (!pkg) throw new Error(`该平台没有可自动安装的 Java ${major}，可在设置中指定 Java 路径`);
+    if (!/^[0-9a-f]{64}$/i.test(pkg.checksum) || !Number.isSafeInteger(pkg.size) || pkg.size <= 0)
+      throw new Error('Java 下载缺少有效校验信息');
     const archive = path.join(
       this.store.root,
       'cache',
@@ -148,21 +165,40 @@ export class Java {
     });
     ctx.progress(80, '解压 Java');
     ctx.signal.throwIfAborted();
-    const target = path.join(this.store.root, 'runtimes');
-    await mkdir(target, { recursive: true });
-    if (platform === 'windows') await extractZip(archive, target);
-    else {
-      const { stdout } = await exec('tar', ['-tzf', archive], { maxBuffer: 10 * 1024 ** 2 });
-      for (const entry of stdout.split('\n').filter(Boolean)) {
-        if (entry.startsWith('/') || entry.split('/').includes('..'))
-          throw new Error('运行时压缩包包含不安全路径');
+    const runtimes = path.join(this.store.root, 'runtimes');
+    await mkdir(runtimes, { recursive: true });
+    const stage = await mkdtemp(path.join(runtimes, '.extract-'));
+    try {
+      if (platform === 'windows') await extractZip(archive, stage);
+      else {
+        const { stdout } = await exec('tar', ['-tzf', archive], { maxBuffer: 10 * 1024 ** 2 });
+        for (const entry of stdout.split('\n').filter(Boolean)) {
+          if (entry.startsWith('/') || entry.split('/').includes('..'))
+            throw new Error('运行时压缩包包含不安全路径');
+        }
+        await exec('tar', ['-xzf', archive, '-C', stage], { signal: ctx.signal });
       }
-      await exec('tar', ['-xzf', archive, '-C', target], { signal: ctx.signal });
+      const roots = (await readdir(stage, { withFileTypes: true })).filter((d) => d.isDirectory());
+      if (roots.length !== 1) throw new Error('无法识别运行时目录');
+      const source = path.join(stage, roots[0].name);
+      const bin =
+        platform === 'windows'
+          ? 'bin/java.exe'
+          : platform === 'mac'
+            ? 'Contents/Home/bin/java'
+            : 'bin/java';
+      const runtime = await inspectJava(path.join(source, bin));
+      if (runtime.major !== major || javaArch(runtime.arch) !== process.arch)
+        throw new Error('运行时版本或架构不匹配');
+      ctx.signal.throwIfAborted();
+      const target = path.join(runtimes, `temurin-${major}-${pkg.checksum.slice(0, 16)}`);
+      if (!(await exists(target))) await rename(source, target);
+      const installed = await inspectJava(path.join(target, bin));
+      if (installed.major !== major || javaArch(installed.arch) !== process.arch)
+        throw new Error('已安装的 Java 校验失败');
+    } finally {
+      await rm(stage, { recursive: true, force: true });
     }
-    const runtimes = await this.discover();
-    const runtime = runtimes.find((r) => r.major === major && r.path.startsWith(target));
-    if (!runtime) throw new Error('运行时已解压，但未找到 Java');
-    if (platform !== 'windows') await chmod(runtime.path, 0o755);
     ctx.progress(100, 'Java 已安装');
   }
 }

@@ -1,0 +1,26 @@
+.welcome-java,
+.welcome-java-job,
+.welcome-java-readout {
+  display: grid;
+  gap: 12px;
+  min-width: 0;
+}
+.welcome-java {
+  gap: 18px;
+}
+.welcome-java-readout {
+  padding: 14px 16px;
+  border-left: 3px solid var(--orange);
+  background: rgb(255 255 255 / 4%);
+  gap: 6px;
+}
+.welcome-java-readout small {
+  color: var(--muted);
+}
+.welcome-java-job {
+  justify-items: start;
+}
+.welcome-java-job progress {
+  width: 100%;
+  accent-color: var(--orange);
+}

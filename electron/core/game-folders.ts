@@ -7,6 +7,12 @@ import type { Work } from './tasks';
 import { inside, exists } from './files';
 import { mergeVersions, type Version } from './minecraft';
 import { clientVersion } from './client-version';
+import {
+  numericSettings,
+  pclIsolation,
+  readOfficialProfiles,
+  type ProfileOptions,
+} from './launcher-profiles';
 import { instanceSchema } from '../../shared/schema';
 import type {
   GameFolder,
@@ -118,6 +124,8 @@ type Entry = MinecraftScan['versions'][number] & {
   version?: string;
   loader?: Loader;
   loaderVersion?: string;
+  settings?: ProfileOptions;
+  directoryError?: boolean;
 };
 export class GameFolders {
   private selections = new Map<string, { root: string; expires: number; entries: Entry[] }>();
@@ -142,7 +150,13 @@ export class GameFolders {
         throw new Error('游戏文件夹不能相互嵌套');
     return root;
   }
-  private async runDirectory(root: string, versionId: string, layout: GameLayout) {
+  private async runDirectory(
+    root: string,
+    versionId: string,
+    layout: GameLayout,
+    official?: ProfileOptions,
+    settings: ProfileOptions = {},
+  ) {
     const isolated = inside(root, `versions/${versionId}`);
     let selected = layout === 'version' ? isolated : root;
     if (layout === 'auto') {
@@ -156,7 +170,22 @@ export class GameFolders {
           gameDir?: string;
           runningDirectory?: string;
           overrideProperties?: string[];
+          usesGlobal?: boolean;
+          maxMemory?: number;
+          autoMemory?: boolean;
+          width?: number;
+          height?: number;
         }>(config);
+        const active = (key: string) =>
+          hasModern ? v.overrideProperties?.includes(key) : v.usesGlobal !== true;
+        Object.assign(
+          settings,
+          numericSettings(
+            active('width') && v.width,
+            active('height') && v.height,
+            active('maxMemory') && !v.autoMemory && v.maxMemory,
+          ),
+        );
         if (hasModern) {
           // HMCL keeps dormant per-instance values when this setting inherits its preset.
           if (v.overrideProperties?.includes('runningDirectory'))
@@ -167,8 +196,16 @@ export class GameFolders {
         } else if (v.gameDirType === 1) selected = isolated;
         else if (v.gameDirType === 2 && v.gameDir) selected = path.resolve(root, v.gameDir);
         else if (v.gameDirType !== 0) selected = await this.detectDirectory(root, isolated);
-      } else selected = await this.detectDirectory(root, isolated);
+      } else {
+        const indie = await pclIsolation(isolated);
+        if (indie !== undefined) selected = indie ? isolated : root;
+        else if (official?.ambiguous)
+          throw new Error('多个官方配置使用不同运行目录，请手动选择隔离方式');
+        else if (official?.gameDir) selected = official.gameDir;
+        else selected = await this.detectDirectory(root, isolated);
+      }
     }
+    await checkGamePath(selected);
     selected = await realpath(selected);
     await this.safeRootForContent(root, selected);
     return selected;
@@ -185,21 +222,36 @@ export class GameFolders {
   }
   private async entries(root: string, layouts = new Map<string, GameLayout>(), ctx?: Work) {
     const versions = path.join(root, 'versions');
-    await checkGamePath(versions);
+    await checkGamePath(versions, true);
+    if (!(await exists(versions))) return [];
     const names = (await readdir(versions, { withFileTypes: true }))
       .filter((e) => e.isDirectory() && versionName(e.name))
       .map((e) => e.name)
       .sort((a, b) => a.localeCompare(b));
     if (names.length > 2000) throw new Error('版本目录超过 2000 个，请分文件夹管理');
     const out: Entry[] = [];
+    const profiles = await readOfficialProfiles(root);
     for (const [index, versionId] of names.entries()) {
       ctx?.signal.throwIfAborted();
       ctx?.progress((98 * index) / names.length, versionId);
       if (!(await exists(inside(root, `versions/${versionId}/${versionId}.json`)))) continue;
       const layout = layouts.get(versionId) ?? 'auto';
-      const entry: Entry = { id: versionId, name: versionId, layout, gameDir: root };
+      const profile = profiles.get(versionId);
+      const settings = numericSettings(profile?.width, profile?.height, profile?.memoryMb);
+      const entry: Entry = {
+        id: versionId,
+        name: profile?.name ?? versionId,
+        layout,
+        gameDir: root,
+        settings,
+      };
       try {
-        entry.gameDir = await this.runDirectory(root, versionId, layout);
+        entry.gameDir = await this.runDirectory(root, versionId, layout, profile, settings);
+      } catch (e) {
+        entry.directoryError = true;
+        entry.error = e instanceof Error ? e.message : String(e);
+      }
+      try {
         const { version, client, base } = await resolveExternalVersion(root, versionId);
         const info = metadata(version),
           actualVersion = await clientVersion(client, base);
@@ -210,43 +262,44 @@ export class GameFolders {
           throw new Error('游戏或加载器版本标识无效，请在原启动器检查');
         Object.assign(entry, info, { version: actualVersion });
       } catch (e) {
-        entry.error = e instanceof Error ? e.message : String(e);
+        entry.error ??= e instanceof Error ? e.message : String(e);
       }
       out.push(entry);
     }
     return out;
   }
-  async scan(directory: string): Promise<MinecraftScan> {
+  async scan(directory: string, allowGameData = false): Promise<MinecraftScan> {
     const root = await this.safeRoot(directory);
     const entries = await this.entries(root);
-    if (!entries.length) throw new Error('未找到 versions/<版本>/<版本>.json');
+    if (
+      !entries.length &&
+      !(
+        allowGameData &&
+        (await readdir(root)).some((name) =>
+          /^(?:saves|mods|options\.txt|resourcepacks|shaderpacks|servers\.dat)$/i.test(name),
+        )
+      )
+    )
+      throw new Error('未找到游戏版本、存档或游戏设置');
     const selectionId = randomUUID();
     for (const [key, v] of this.selections) if (v.expires < Date.now()) this.selections.delete(key);
     if (this.selections.size >= 20) this.selections.delete(this.selections.keys().next().value!);
     this.selections.set(selectionId, { root, entries, expires: Date.now() + 10 * 60_000 });
     return { selectionId, root, versions: entries };
   }
-  async add(value: Parameters<Api['importMinecraft']>[0], ctx?: Work) {
+  async confirmed(value: Parameters<Api['importMinecraft']>[0], ctx?: Work) {
     const ticket = this.selections.get(value.selectionId);
     if (!ticket || ticket.expires < Date.now()) throw new Error('目录预览已过期，请重新选择');
     if (value.layouts.some((l) => !ticket.entries.some((e) => e.id === l.versionId)))
       throw new Error('版本不属于此目录');
     const root = await this.safeRoot(ticket.root, true);
-    let folder = this.store.data.gameFolders.find((f) => same(f.path, root));
-    const existing = !!folder;
-    folder ??= {
-      id: randomUUID(),
-      name: value.name,
-      path: root,
-      addedAt: Date.now(),
-      refreshedAt: 0,
-    };
     const entries = await this.entries(
       root,
       new Map(value.layouts.map((l) => [l.versionId, l.layout])),
       ctx,
     );
     // The displayed custom working directories must not change between preview and confirmation.
+    if (entries.length !== ticket.entries.length) throw new Error('游戏版本已变化，请重新预览');
     for (const entry of entries) {
       const before = ticket.entries.find((e) => e.id === entry.id);
       if (!before || (entry.layout === 'auto' && before.gameDir !== entry.gameDir))
@@ -254,15 +307,38 @@ export class GameFolders {
     }
     await this.safeRoot(root, true);
     ctx?.signal.throwIfAborted();
+    return { root, entries };
+  }
+  async add(value: Parameters<Api['importMinecraft']>[0], ctx?: Work) {
+    const { root, entries } = await this.confirmed(value, ctx);
+    const existing = this.store.data.gameFolders.find((f) => same(f.path, root));
+    const folder = existing ?? {
+      id: randomUUID(),
+      name: value.name,
+      path: root,
+      addedAt: Date.now(),
+      refreshedAt: 0,
+    };
     ctx?.progress(98, '保存实例索引');
-    if (!existing) this.store.data.gameFolders.push(folder);
-    this.commit(folder, entries);
-    this.selections.delete(value.selectionId);
-    this.store.data.selectedGameFolderId = folder.id;
-    this.store.data.selectedInstanceId = this.store.data.instances.find(
-      (i) => i.external?.folderId === folder.id,
-    )?.id;
-    this.store.save();
+    const previous = {
+      instances: structuredClone(this.store.data.instances),
+      gameFolders: structuredClone(this.store.data.gameFolders),
+      selectedInstanceId: this.store.data.selectedInstanceId,
+      selectedGameFolderId: this.store.data.selectedGameFolderId,
+    };
+    try {
+      if (!existing) this.store.data.gameFolders.push(folder);
+      this.commit(folder, entries);
+      this.store.data.selectedGameFolderId = folder.id;
+      this.store.data.selectedInstanceId = this.store.data.instances.find(
+        (i) => i.external?.folderId === folder.id,
+      )?.id;
+      this.store.save();
+      this.selections.delete(value.selectionId);
+    } catch (error) {
+      Object.assign(this.store.data, previous);
+      throw error;
+    }
     return folder.id;
   }
   private commit(folder: GameFolder, entries: Entry[]) {
@@ -285,6 +361,7 @@ export class GameFolders {
           jvmArgs: [],
           width: 1280,
           height: 720,
+          ...entry.settings,
         };
       }
       const validated = instanceSchema.parse({
@@ -354,7 +431,13 @@ export class GameFolders {
     const i = this.store.instance(id);
     if (!i.external) throw new Error('请选择外部版本');
     const folder = this.store.folder(i.external.folderId);
-    i.gameDir = await this.runDirectory(folder.path, i.external.versionId, layout);
+    const profiles = await readOfficialProfiles(folder.path);
+    i.gameDir = await this.runDirectory(
+      folder.path,
+      i.external.versionId,
+      layout,
+      profiles.get(i.external.versionId),
+    );
     i.external.layout = layout;
     this.store.save();
     await this.refresh(folder.id);

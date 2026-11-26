@@ -114,8 +114,18 @@ function AppearanceSettings({ state, run }: { state: Snapshot; run: Run }) {
     </SettingGroup>
   );
 }
-export function SettingsPage({ state, run }: { state: Snapshot; run: Run }) {
-  const [s, set] = useState<Settings>({ ...state.settings }),
+export function SettingsPage({
+  state,
+  run,
+  onImport,
+  onLibrary,
+}: {
+  state: Snapshot;
+  run: Run;
+  onImport: () => void;
+  onLibrary: () => void;
+}) {
+  const [draft, setDraft] = useState<Partial<Settings>>({}),
     [java, setJava] = useState<JavaRuntime[]>([]),
     [scanning, setScanning] = useState(false);
   const scan = async () => {
@@ -124,7 +134,8 @@ export function SettingsPage({ state, run }: { state: Snapshot; run: Run }) {
     if (r) setJava(r);
     setScanning(false);
   };
-  const patch = (v: Partial<Settings>) => set({ ...s, ...v });
+  const s = { ...state.settings, ...draft };
+  const patch = (v: Partial<Settings>) => setDraft((current) => ({ ...current, ...v }));
   return (
     <form
       className="settings-form single-page launcher-settings"
@@ -134,11 +145,37 @@ export function SettingsPage({ state, run }: { state: Snapshot; run: Run }) {
       }}
       onSubmit={(e) => {
         e.preventDefault();
-        void run(() => api.settings(s), '设置已保存');
+        void run(async () => {
+          await api.settings({ ...(await api.snapshot()).settings, ...draft });
+          setDraft((current) =>
+            Object.fromEntries(
+              Object.entries(current).filter(
+                ([key, value]) => value !== draft[key as keyof Settings],
+              ),
+            ),
+          );
+        }, '设置已保存');
       }}
     >
       <LauncherInfo state={state} run={run} />
       <AppearanceSettings state={state} run={run} />
+      <SettingGroup title="游戏目录与迁移" art="versions">
+        <div className="row">
+          <button type="button" onClick={onImport}>
+            导入其他启动器
+          </button>
+          <button type="button" onClick={onLibrary}>
+            管理游戏文件夹
+          </button>
+          <button
+            type="button"
+            className="text-button"
+            onClick={() => void run(() => api.setWelcome({ step: 'start' }))}
+          >
+            重看欢迎引导
+          </button>
+        </div>
+      </SettingGroup>
       <SettingGroup title="游戏运行" art="block">
         <div className="form-grid">
           <Field label="默认内存">
@@ -212,29 +249,31 @@ export function SettingsPage({ state, run }: { state: Snapshot; run: Run }) {
         </div>
       </SettingGroup>
       <SettingGroup title="下载与网络" art="hopper">
-        <Field label="下载源">
-          <Select
-            value={s.source}
-            onChange={(e) => patch({ source: e.target.value as Settings['source'] })}
-          >
-            <option value="official">官方源</option>
-            <option value="bmclapi">BMCLAPI 镜像</option>
-          </Select>
-        </Field>
+        <div className="form-grid">
+          <Field label="下载源">
+            <Select
+              value={s.source}
+              onChange={(e) => patch({ source: e.target.value as Settings['source'] })}
+            >
+              <option value="official">官方源</option>
+              <option value="bmclapi">BMCLAPI 镜像</option>
+            </Select>
+          </Field>
+          <Field label="并发下载数">
+            <input
+              type="number"
+              min={1}
+              max={16}
+              value={s.concurrency}
+              onChange={(e) => patch({ concurrency: Number(e.target.value) })}
+            />
+          </Field>
+        </div>
         <Field label="HTTP 代理">
           <input
             placeholder="http://127.0.0.1:7890"
             value={s.proxy}
             onChange={(e) => patch({ proxy: e.target.value })}
-          />
-        </Field>
-        <Field label="并发下载数">
-          <input
-            type="number"
-            min={1}
-            max={16}
-            value={s.concurrency}
-            onChange={(e) => patch({ concurrency: Number(e.target.value) })}
           />
         </Field>
         <label className="check">
@@ -247,17 +286,10 @@ export function SettingsPage({ state, run }: { state: Snapshot; run: Run }) {
         </label>
       </SettingGroup>
       <SettingGroup
-        title="账户与存储"
+        title="数据与存储"
         art="chest"
         open={Boolean(state.storage?.pendingRestart || state.storage?.retired)}
       >
-        <Field label="Microsoft Client ID">
-          <input
-            placeholder="应用注册的客户端 ID"
-            value={s.microsoftClientId}
-            onChange={(e) => patch({ microsoftClientId: e.target.value })}
-          />
-        </Field>
         <StorageSettings state={state} run={run} />
         <DirectoryField
           label="默认实例根目录"

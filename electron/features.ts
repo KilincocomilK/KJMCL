@@ -1,4 +1,5 @@
 import { showSystemDialog } from './system-dialog';
+import { LauncherMigration } from './core/launcher-migration';
 import { dialog, type BrowserWindow } from 'electron';
 import path from 'node:path';
 import { randomUUID } from 'node:crypto';
@@ -17,6 +18,10 @@ type Extra = Pick<
   | 'cloneInstance'
   | 'relocateInstance'
   | 'scanMinecraft'
+  | 'discoverLaunchers'
+  | 'pickLauncher'
+  | 'previewLauncher'
+  | 'copyLauncher'
   | 'importMinecraft'
   | 'refreshGameFolder'
   | 'removeGameFolder'
@@ -74,6 +79,7 @@ export function featureHandlers(c: {
   let exportChoice: { id: string; world: string; token: string; path: string } | undefined;
   let authenticating = false;
   let scanningFolders = 0;
+  const migration = new LauncherMigration(store, instances.folders);
   const accountWritable = () => {
     if (tasks.busy('auth') || authenticating) throw new Error('请先完成当前登录');
     if (c.gameRunning()) throw new Error('请先停止游戏再更换第三方角色');
@@ -122,6 +128,27 @@ export function featureHandlers(c: {
       } finally {
         if (--scanningFolders === 0) c.folderScan(false);
       }
+    },
+    discoverLaunchers: () => migration.discover(),
+    pickLauncher: async () => {
+      const r = await dialog.showOpenDialog(c.window(), {
+        title: '选择游戏文件夹或启动器所在目录',
+        properties: ['openDirectory'],
+      });
+      if (r.canceled || !r.filePaths[0]) return null;
+      return migration.inspect(r.filePaths[0]);
+    },
+    previewLauncher: (id) => migration.preview(id),
+    copyLauncher: async (value) => {
+      const r = await dialog.showOpenDialog(c.window(), {
+        title: '选择副本的存放位置',
+        properties: ['openDirectory', 'createDirectory'],
+      });
+      if (r.canceled || !r.filePaths[0]) return null;
+      for (const i of store.data.instances) c.assertIdle(i.id);
+      return tasks.run('复制游戏文件夹', 'game-folders', (ctx) =>
+        migration.copy(value, r.filePaths[0], ctx),
+      );
     },
     importMinecraft: async (v) => {
       for (const i of store.data.instances) c.assertIdle(i.id);

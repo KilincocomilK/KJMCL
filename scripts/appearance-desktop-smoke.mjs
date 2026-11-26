@@ -333,7 +333,17 @@ try {
     await page.getByRole('button', { name, exact: true }).click();
     await noHorizontalOverflow(page);
   }
-  await page.getByText('下载与网络', { exact: true }).click();
+  const settingSections = page.locator('.launcher-settings .setting-group');
+  for (const section of await settingSections.all()) {
+    await section.locator(':scope > summary').click();
+    await noHorizontalOverflow(page);
+    expect(await section.evaluate((el) => el.scrollWidth <= el.clientWidth + 1)).toBe(true);
+  }
+  const folderActions = page.getByRole('button', { name: '导入其他启动器', exact: true });
+  const first = await folderActions.boundingBox();
+  const second = await page.getByRole('button', { name: '管理游戏文件夹', exact: true }).boundingBox();
+  expect(Math.abs(second.y - first.y)).toBeLessThan(1);
+  expect(second.x - first.x - first.width).toBeLessThanOrEqual(10);
   const downloadSource = page.getByRole('combobox', { name: '下载源', exact: true });
   await page.getByText('下载源', { exact: true }).click();
   await expect(downloadSource).toHaveAttribute('aria-expanded', 'true');

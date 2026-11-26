@@ -104,7 +104,13 @@ export function ProvidersPanel({ data }: { data: AiState }) {
     </div>
   );
 }
-function NewProvider({ onClose, onSaved }: { onClose: () => void; onSaved: (id: string) => void }) {
+export function NewProvider({
+  onClose,
+  onSaved,
+}: {
+  onClose: () => void;
+  onSaved: (id: string) => void;
+}) {
   const [name, setName] = useState(''),
     [url, setUrl] = useState(''),
     [model, setModel] = useState(''),

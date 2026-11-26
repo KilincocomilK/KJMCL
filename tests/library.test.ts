@@ -14,7 +14,7 @@ import path from 'node:path';
 import os from 'node:os';
 import AdmZip from 'adm-zip';
 import { createHash } from 'node:crypto';
-import { Store } from '../electron/core/store';
+import { STATE_VERSION, Store } from '../electron/core/store';
 import { claimDirectory } from '../electron/core/instances';
 import { Resources } from '../electron/core/resources';
 import { ModAudit } from '../electron/core/mod-audit';
@@ -74,7 +74,7 @@ it('migrates v3 without losing accounts, paths, settings or playtime and keeps e
   const bytes = JSON.stringify(original);
   await writeFile(file, bytes);
   const next = new Store(store.root);
-  expect(next.data.schemaVersion).toBe(9);
+  expect(next.data.schemaVersion).toBe(STATE_VERSION);
   expect(next.data.favorites).toEqual([]);
   expect(next.data.accounts).toEqual(original.accounts);
   expect(next.data.instances[0].gameDir).toBe(original.instances[0].gameDir);

@@ -4,10 +4,11 @@ import {
   selectLauncherOption,
 } from './desktop-test-utils.mjs';
 import { _electron as electron, expect } from '@playwright/test';
-import { cp, mkdtemp, mkdir, writeFile, readFile, rm } from 'node:fs/promises';
+import { mkdtemp, mkdir, writeFile, readFile, rm } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import AdmZip from 'adm-zip';
+import { writeProjectionAssetFixture } from '../tests/fixtures/projection-assets.mjs';
 import {
   fixtureGeometry,
   litematicFixture,
@@ -15,19 +16,14 @@ import {
 } from '../tests/fixtures/projection-nbt.mjs';
 const root = await mkdtemp(path.join(os.tmpdir(), 'kjmcl-resource-desktop-'));
 const env = { ...process.env, KJMCL_DATA_DIR: path.join(root, 'data'), TEMP: root, TMP: root };
-try {
-  await cp(
-    path.resolve('.local/projection-render-assets/projection-workshop/assets'),
-    path.join(env.KJMCL_DATA_DIR, 'projection-workshop/assets'),
-    { recursive: true },
-  );
-} catch (error) {
-  if (error.code !== 'ENOENT') throw error;
-}
 delete env.ELECTRON_RUN_AS_NODE;
 delete env.KJMCL_DEV_URL;
 let app;
 try {
+  await writeProjectionAssetFixture(env.KJMCL_DATA_DIR, [
+    ...fixtureGeometry().palette.map(block => block.name),
+    'minecraft:diamond_block',
+  ]);
   app = await electron.launch(
     process.env.KJMCL_EXECUTABLE
       ? { executablePath: process.env.KJMCL_EXECUTABLE, args: [], env }

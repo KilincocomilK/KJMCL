@@ -10,7 +10,7 @@ import {
   quickPlaySupport,
 } from '../electron/core/launch-options';
 import { expandArguments, mergeVersions, type Version } from '../electron/core/minecraft';
-import { Store } from '../electron/core/store';
+import { STATE_VERSION, Store } from '../electron/core/store';
 import { launchOptionsSchema } from '../shared/schema';
 import type { Account } from '../shared/types';
 
@@ -249,7 +249,7 @@ describe('instance launch preferences', () => {
     const original = { ...store.data, schemaVersion: 6 };
     await writeFile(path.join(root, 'state.json'), JSON.stringify(original));
     const migrated = new Store(root);
-    expect(migrated.data.schemaVersion).toBe(9);
+    expect(migrated.data.schemaVersion).toBe(STATE_VERSION);
     expect(migrated.data.appearance).toEqual(original.appearance);
     expect(migrated.data.accounts).toEqual(original.accounts);
     expect(migrated.data.instances[0].playTime).toBe(22);

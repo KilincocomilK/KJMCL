@@ -93,12 +93,10 @@ try {
   await input.press('Enter');
   const results = page.getByRole('region', { name: '在线模组' });
   await expect(results.getByText('Example Mod', { exact: true })).toBeVisible();
-  expect((await app.evaluate(() => globalThis.searchRequests))[0].facets).toEqual([
-    ['project_type:mod'],
-    ['versions:1.21.1'],
-    ['categories:fabric'],
-  ]);
-  expect((await app.evaluate(() => globalThis.searchRequests))[0].query).toBe('sodium');
+  // The initial unfiltered listing can finish before the submitted search.
+  await expect.poll(() => app.evaluate(() =>
+    globalThis.searchRequests.find((request) => request.query === 'sodium')?.facets,
+  )).toEqual([['project_type:mod'], ['versions:1.21.1'], ['categories:fabric']]);
   await selectLauncherOption(page, '内容排序', 'downloads');
   await expect
     .poll(() => app.evaluate(() => globalThis.searchRequests.at(-1).sort))

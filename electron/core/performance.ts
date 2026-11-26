@@ -7,6 +7,8 @@ import type { Instance, JavaRuntime, LaunchCheck, PerformanceSettings } from '..
 import type { Store } from './store';
 import { checkGamePath } from './game-folders';
 import { Java, inspectJava, javaArch, javaEnvironment } from './java';
+import { requiredJava } from '../../shared/java';
+export { requiredJava } from '../../shared/java';
 import type { Minecraft } from './minecraft';
 import { prepareGameLaunch } from './launch-options';
 const exec = promisify(execFile);
@@ -22,24 +24,17 @@ export const defaults: PerformanceSettings = {
   collector: 'auto',
   gcLogging: false,
 };
-export function memoryBudget(i: Instance, totalMb: number, availableMb: number) {
+export function recommendedHeap(totalMb: number, availableMb: number, maximumMb: number) {
   // Reserve physical memory for the OS, native allocations and the launcher; a heap cap is not total RSS.
-  const budget = Math.max(
+  return Math.max(
     512,
-    Math.floor(Math.min(totalMb * 0.5, availableMb - 2048, 8192) / 256) * 256,
+    Math.floor(Math.min(totalMb * 0.5, availableMb - 2048, maximumMb) / 256) * 256,
   );
-  return i.performance?.memory === 'auto' ? Math.min(budget, i.memoryMb) : i.memoryMb;
 }
-export function requiredJava(version: string, metadata?: number) {
-  if (metadata) return metadata;
-  const m = /^(\d+)\.(\d+)(?:\.(\d+))?$/.exec(version);
-  if (!m) return 8; // Snapshots and loader-specific requirements must come from metadata.
-  const [, major, minor, patch] = m.map(Number);
-  if (major === 26) return 25;
-  if (major === 1 && (minor > 20 || (minor === 20 && (patch || 0) >= 5))) return 21;
-  if (major === 1 && minor >= 18) return 17;
-  if (major === 1 && minor === 17) return 16;
-  return 8;
+export function memoryBudget(i: Instance, totalMb: number, availableMb: number) {
+  return i.performance?.memory === 'auto'
+    ? Math.min(recommendedHeap(totalMb, availableMb, 8192), i.memoryMb)
+    : i.memoryMb;
 }
 export function memoryArgumentIssues(i: Instance, memoryMb: number, metadataArgs: string[]) {
   const issues: LaunchCheck['issues'] = [];

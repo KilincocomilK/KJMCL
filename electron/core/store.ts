@@ -16,6 +16,8 @@ import type {
   ContentFavorite,
   GameFolder,
   Appearance,
+  WelcomeProgress,
+  WelcomeSection,
 } from '../../shared/types';
 import {
   instanceSchema,
@@ -24,9 +26,11 @@ import {
   gameFolderSchema,
   appearanceSchema,
   sidebarOrderSchema,
+  welcomeProgressSchema,
+  welcomeSectionSchema,
 } from '../../shared/schema';
 import { z } from 'zod';
-export const STATE_VERSION = 9;
+export const STATE_VERSION = 11;
 
 export function supportsStateVersion(value: unknown) {
   return (
@@ -49,6 +53,8 @@ function readSidebarOrder(version: number, value: unknown): SidebarEntry[] {
 }
 
 interface Data {
+  welcome: WelcomeProgress;
+  welcomeConfigured: WelcomeSection[];
   schemaVersion: typeof STATE_VERSION;
   sidebarOrder: SidebarEntry[];
   appearance: Appearance;
@@ -70,6 +76,8 @@ export class Store {
     root = this.root;
     this.file = path.join(root, 'state.json');
     this.data = {
+      welcome: { step: 'start' },
+      welcomeConfigured: [],
       schemaVersion: STATE_VERSION,
       sidebarOrder: [...DEFAULT_SIDEBAR_ORDER],
       appearance: { dim: 32, blur: 0 },
@@ -107,6 +115,12 @@ export class Store {
           ? { dim: 32, blur: 0 }
           : appearanceSchema.parse(loaded.appearance);
       loaded.sidebarOrder = readSidebarOrder(loaded.schemaVersion, loaded.sidebarOrder);
+      loaded.welcome =
+        loaded.schemaVersion < 10 ? { step: 'done' } : welcomeProgressSchema.parse(loaded.welcome);
+      loaded.welcomeConfigured =
+        loaded.schemaVersion < 11
+          ? []
+          : z.array(welcomeSectionSchema).parse(loaded.welcomeConfigured);
       loaded.schemaVersion = STATE_VERSION;
       loaded.settings = settingsSchema.parse(loaded.settings);
       loaded.instances = loaded.instances.map((v) => {
@@ -134,10 +148,22 @@ export class Store {
       if (migrating) this.save();
     }
   }
-  save() {
-    if (existsSync(this.file)) copyFileSync(this.file, this.file + '.bak');
-    writeFileSync(this.file + '.tmp', JSON.stringify(this.data, null, 2));
-    renameSync(this.file + '.tmp', this.file);
+  save(configuredSection?: WelcomeSection) {
+    const configured = this.data.welcomeConfigured;
+    if (
+      configuredSection &&
+      this.data.welcome.step !== 'done' &&
+      !configured.includes(configuredSection)
+    )
+      this.data.welcomeConfigured = [...configured, configuredSection];
+    try {
+      if (existsSync(this.file)) copyFileSync(this.file, this.file + '.bak');
+      writeFileSync(this.file + '.tmp', JSON.stringify(this.data, null, 2));
+      renameSync(this.file + '.tmp', this.file);
+    } catch (error) {
+      this.data.welcomeConfigured = configured;
+      throw error;
+    }
   }
   setSidebarOrder(order: SidebarEntry[]) {
     const previous = this.data.sidebarOrder;
@@ -148,6 +174,23 @@ export class Store {
       this.data.sidebarOrder = previous;
       throw err;
     }
+  }
+  setWelcome(value: WelcomeProgress) {
+    const previous = this.data.welcome;
+    const configured = this.data.welcomeConfigured;
+    this.data.welcome = welcomeProgressSchema.parse(value);
+    if (value.step === 'done') this.data.welcomeConfigured = [];
+    try {
+      this.save();
+    } catch (error) {
+      this.data.welcome = previous;
+      this.data.welcomeConfigured = configured;
+      throw error;
+    }
+  }
+  markWelcomeConfigured(section: WelcomeSection) {
+    if (this.data.welcome.step !== 'done' && !this.data.welcomeConfigured.includes(section))
+      this.save(section);
   }
   instance(id: string) {
     const i = this.data.instances.find((x) => x.id === id);

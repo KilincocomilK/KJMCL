@@ -12,7 +12,9 @@ import {
 import { javaArch, compareJava, Java } from '../electron/core/java';
 import { diagnose, gcSummary, Diagnostics } from '../electron/core/diagnostics';
 import { VideoSettings, optionValues } from '../electron/core/video-settings';
-import { Store } from '../electron/core/store';
+import { Store, STATE_VERSION } from '../electron/core/store';
+import { configureWelcomeJava, welcomeJavaInfo } from '../electron/core/welcome-java';
+import { welcomeJavaChoices } from '../shared/java';
 import { Minecraft, expandArguments } from '../electron/core/minecraft';
 import { prepareGameLaunch } from '../electron/core/launch-options';
 import { Network } from '../electron/core/network';
@@ -105,6 +107,94 @@ describe('runtime policy', () => {
     expect(requiredJava('1.20.5')).toBe(21);
     expect(requiredJava('26.1')).toBe(25);
     expect(requiredJava('1.12.2', 21)).toBe(21);
+  });
+  it('lists installed Java first and prefers a locally available game match', () => {
+    const local = [{ major: 21 }, { major: 17 }, { major: 21 }, { major: 22 }];
+    expect(welcomeJavaChoices(local).map((v) => v.major)).toEqual([21, 17, 25, 16, 8]);
+    expect(welcomeJavaChoices(local, '1.20.4')[0]).toMatchObject({
+      major: 17,
+      installed: true,
+      matchesGame: true,
+    });
+    const missing = welcomeJavaChoices(local, '26.1');
+    expect(missing[0].major).toBe(21);
+    expect(missing.find((v) => v.matchesGame)).toMatchObject({ major: 25, installed: false });
+    expect(welcomeJavaChoices([], '1.17.1')[0].major).toBe(16);
+    expect(welcomeJavaChoices([{ major: 24 }], 'custom-version')[0].major).toBe(25);
+  });
+  it('configures an existing matching Java, preserving the memory of existing instances', async () => {
+    const store = await fixture();
+    store.data.settings.javaPath = '/old-path';
+    const java = new Java(store, new Network(() => store.data.settings));
+    vi.spyOn(java, 'discover').mockResolvedValue([
+      { ...runtime, major: 17, arch: 'unrelated' },
+      { ...runtime, arch: process.arch },
+    ]);
+    const install = vi.spyOn(java, 'install').mockRejectedValue(new Error('unexpected download'));
+    expect((await welcomeJavaInfo(java)).available.map((j) => j.major)).toEqual([21]);
+    const ctx = { signal: new AbortController().signal, progress: () => {} };
+    await expect(
+      configureWelcomeJava(java, store, { major: 17, allowInstall: false }, ctx),
+    ).rejects.toThrow('重新检测');
+    expect(store.data.welcomeConfigured).toEqual([]);
+    await configureWelcomeJava(java, store, { major: 21, allowInstall: false }, ctx);
+    expect(install).not.toHaveBeenCalled();
+    const reloaded = new Store(store.root);
+    expect(reloaded.data.settings.javaPath).toBe('');
+    expect(reloaded.data.welcomeConfigured).toEqual(['java']);
+    expect(reloaded.data.settings.memoryMb).toBeGreaterThanOrEqual(512);
+    expect(reloaded.data.settings.memoryMb).toBeLessThanOrEqual(4096);
+    expect(reloaded.instance('test').memoryMb).toBe(instance.memoryMb);
+  });
+  it('preserves settings if Java installation fails, is cancelled, or races a manual edit', async () => {
+    const store = await fixture();
+    store.data.settings.javaPath = '/initial';
+    const java = new Java(store, new Network(() => store.data.settings));
+    vi.spyOn(java, 'discover').mockResolvedValue([]);
+    const install = vi.spyOn(java, 'install').mockRejectedValueOnce(new Error('network failed'));
+    const control = new AbortController();
+    const ctx = { signal: control.signal, progress: () => {} };
+    const configure = () =>
+      configureWelcomeJava(java, store, { major: 25, allowInstall: true }, ctx);
+    await expect(configure()).rejects.toThrow('network failed');
+    expect(store.data.settings.javaPath).toBe('/initial');
+    install.mockImplementationOnce(async () => {
+      store.data.settings.javaPath = '/manual';
+    });
+    await expect(configure()).rejects.toThrow('保留');
+    expect(store.data.settings.javaPath).toBe('/manual');
+    install.mockImplementationOnce(async () => {
+      control.abort(new Error('cancelled'));
+    });
+    await expect(configure()).rejects.toThrow('cancelled');
+    expect(store.data.settings.javaPath).toBe('/manual');
+    expect(store.data.welcomeConfigured).toEqual([]);
+  });
+  it('commits the Java flag and settings together and respects finishing during installation', async () => {
+    const store = await fixture();
+    store.data.settings.javaPath = '/original';
+    const java = new Java(store, new Network(() => store.data.settings));
+    vi.spyOn(java, 'discover').mockResolvedValue([{ ...runtime, arch: process.arch }]);
+    const ctx = { signal: new AbortController().signal, progress: () => {} };
+    const save = vi.spyOn(store, 'save').mockImplementationOnce(() => {
+      throw new Error('disk full');
+    });
+    await expect(
+      configureWelcomeJava(java, store, { major: 21, allowInstall: false }, ctx),
+    ).rejects.toThrow('disk full');
+    expect(store.data.settings.javaPath).toBe('/original');
+    expect(store.data.welcomeConfigured).toEqual([]);
+    save.mockRestore();
+    const install = vi.spyOn(java, 'install').mockImplementation(async () => {
+      store.setWelcome({ step: 'account', player: 'new' });
+    });
+    await configureWelcomeJava(java, store, { major: 25, allowInstall: true }, ctx);
+    expect(new Store(store.root).data.welcomeConfigured).toEqual(['java']);
+    install.mockImplementation(async () => {
+      store.setWelcome({ step: 'done' });
+    });
+    await configureWelcomeJava(java, store, { major: 25, allowInstall: true }, ctx);
+    expect(new Store(store.root).data.welcomeConfigured).toEqual([]);
   });
   it('normalizes aliases and compares patch versions numerically', () => {
     expect(javaArch('aarch64')).toBe('arm64');
@@ -332,7 +422,7 @@ describe('durable diagnosis', () => {
     old.instances[0].memoryMb = 7168;
     await atomicJson(file, old);
     const migrated = new Store(store.root);
-    expect(migrated.data.schemaVersion).toBe(9);
+    expect(migrated.data.schemaVersion).toBe(STATE_VERSION);
     expect(migrated.instance('test').memoryMb).toBe(7168);
     expect(migrated.instance('test').performance?.memory).toBe('manual');
     expect(JSON.parse(await readFile(file + '.v2.bak', 'utf8'))).toEqual(old);

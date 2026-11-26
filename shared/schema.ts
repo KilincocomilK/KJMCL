@@ -1,4 +1,10 @@
 import { z } from 'zod';
+import { welcomeSections } from './types';
+import { javaGuide } from './java';
+const javaMajor = z
+  .number()
+  .int()
+  .refine((major) => javaGuide.some((v) => v.major === major));
 import { DEFAULT_SIDEBAR_ORDER } from './navigation';
 import { redenFile, redenKey, redenSearch } from './reden';
 import { assistantSchemas } from './assistant';
@@ -57,6 +63,16 @@ const directory = z
   .max(4096)
   .refine((v) => !v.includes('\0'));
 export const gameLayoutSchema = z.enum(['auto', 'shared', 'version']);
+export const welcomeSectionSchema = z.enum(welcomeSections);
+export const welcomeProgressSchema = z.union([
+  z.object({ step: z.enum(['start', 'done']) }).strict(),
+  z
+    .object({
+      step: z.enum(['folders', 'java', 'account', 'assistant', 'finish']),
+      player: z.enum(['new', 'returning']),
+    })
+    .strict(),
+]);
 export const gameFolderSchema = z.object({
   id,
   name: z.string().trim().min(1).max(80),
@@ -154,6 +170,13 @@ export const instanceSchema = z.object({
   launchOptions: launchOptionsSchema.optional(),
 });
 const none = z.undefined();
+const minecraftImport = z
+  .object({
+    selectionId: id,
+    name: z.string().trim().min(1).max(80),
+    layouts: z.array(z.object({ versionId: fileName, layout: gameLayoutSchema })).max(2000),
+  })
+  .strict();
 export const resourceKind = z.enum([
   'mods',
   'shaderpacks',
@@ -182,6 +205,9 @@ const regionRef = worldRef.extend({
   rz: z.number().int().min(-60000).max(60000),
 });
 export const schemas = {
+  setWelcome: welcomeProgressSchema,
+  markWelcomeConfigured: welcomeSectionSchema,
+  prepareGameDirectory: z.enum(['default', 'choose']),
   ...assistantSchemas,
   ...projectionSchemas,
   projectionAssets: projectionAssetsSchema,
@@ -447,11 +473,10 @@ export const schemas = {
   logs: id,
   exportLogs: id,
   java: none,
+  welcomeJavaInfo: none,
+  configureWelcomeJava: z.object({ major: javaMajor, allowInstall: z.boolean() }).strict(),
   pickJava: none,
-  installJava: z
-    .number()
-    .int()
-    .refine((v) => [8, 16, 17, 21, 25].includes(v)),
+  installJava: javaMajor,
   mods: id,
   importMods: id,
   toggleMod: z.object({ id, name: fileName }),
@@ -474,11 +499,11 @@ export const schemas = {
   }),
   relocateInstance: z.object({ id, directory }),
   scanMinecraft: none,
-  importMinecraft: z.object({
-    selectionId: id,
-    name: z.string().trim().min(1).max(80),
-    layouts: z.array(z.object({ versionId: fileName, layout: gameLayoutSchema })).max(2000),
-  }),
+  discoverLaunchers: none,
+  pickLauncher: none,
+  previewLauncher: z.uuid(),
+  copyLauncher: minecraftImport,
+  importMinecraft: minecraftImport,
   refreshGameFolder: id,
   removeGameFolder: id,
   setGameLayout: z.object({ id, layout: gameLayoutSchema }),

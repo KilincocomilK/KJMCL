@@ -26,7 +26,7 @@ export class Auth {
   ) {}
   private client() {
     const id = this.store.data.settings.microsoftClientId;
-    if (!id) throw new Error('请先在设置中填写 KJMCL 的 Microsoft Client ID');
+    if (!id) throw new Error('请先在账户管理中填写 Microsoft Client ID');
     return id;
   }
   private secure() {
@@ -55,6 +55,7 @@ export class Auth {
   }
   async begin(): Promise<DeviceCode> {
     const client_id = this.client();
+    const welcomeLogin = this.store.data.welcome.step === 'account';
     this.secure();
     if (this.tasks.busy('auth')) throw new Error('请先取消当前登录');
     const controller = new AbortController();
@@ -115,7 +116,7 @@ export class Auth {
           this.store.data.accounts = this.store.data.accounts.filter((a) => a.id !== account.id);
           this.store.data.accounts.push(publicAccount);
           this.store.data.selectedAccountId = account.id;
-          this.store.save();
+          this.store.save(welcomeLogin ? 'account' : undefined);
           this.changed();
           return;
         }

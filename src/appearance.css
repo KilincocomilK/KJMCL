@@ -811,6 +811,52 @@ main[data-page='downloads'] > .empty {
 .launcher-info .release-actions {
   padding-top: 12px;
 }
+.launcher-settings {
+  container: launcher-settings / inline-size;
+  grid-template-columns: minmax(0, 1fr);
+}
+.launcher-settings .setting-body {
+  grid-template-columns: minmax(0, 1fr);
+  gap: 16px;
+  padding: 16px clamp(14px, 2.4vw, 22px);
+}
+.launcher-settings .row,
+.launcher-settings .appearance-actions,
+.launcher-settings .release-buttons {
+  justify-content: flex-start;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.launcher-settings .release-actions {
+  justify-content: flex-start;
+  gap: 12px;
+}
+.launcher-settings .row > input {
+  flex: 1 1 14rem;
+  min-width: min(100%, 10rem);
+}
+.launcher-settings .java-install small {
+  flex-basis: 100%;
+  margin: 0;
+}
+.launcher-settings .storage-settings {
+  gap: 8px;
+}
+.launcher-settings .storage-settings p {
+  margin: 0;
+}
+.launcher-settings .form-grid {
+  align-items: start;
+  gap: 14px;
+}
+.launcher-settings .field {
+  gap: 6px;
+}
+@container launcher-settings (min-width: 38rem) {
+  .launcher-settings .form-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
 .accounts-page .account-grid {
   display: grid;
   grid-template-columns: 1fr;

@@ -2,7 +2,7 @@
 
 2026-11-12 用户已明确指定：作者为 KilincocomilK，采用 MIT 许可证，上传到本人 GitHub 并先保持私有。仓库为 [KilincocomilK/KJMCL](https://github.com/KilincocomilK/KJMCL)。其余需要外部身份或发行配置的事项继续保留。
 
-1. **Microsoft 应用身份**：KJMCL 的 Client ID、应用所有者和 Minecraft 服务准入。入口已在设置，代码不包含其他启动器的 ID。
+1. **Microsoft 应用身份**：KJMCL 的 Client ID、应用所有者和 Minecraft 服务准入。可在「账户管理 → Microsoft 账户」填写客户端 ID。
 2. **许可证与仓库**：已按用户授权采用 MIT 并署名 KilincocomilK，GitHub 仓库保持私有；以后何时公开尚未指定。npm 包保留 `private: true` 防止误发布。SJMCL 参考目录、构建产物和玩家数据不上传。
 3. **正式发布**：版本渠道、Windows 证书、macOS 签名 / 公证、自动更新服务、下载域名尚未配置。
 4. **新增集成凭据**：CurseForge API Key 和 Modrinth 发布令牌由用户在设置配置，系统加密保存；不预置第三方项目凭据。以上原待确认问题继续保留，本轮没有再次请求回答。

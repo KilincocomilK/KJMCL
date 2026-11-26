@@ -1,4 +1,5 @@
 import { chromium, expect } from '@playwright/test';
+import { dismissWelcome } from './desktop-test-utils.mjs';
 import { mkdtemp, mkdir, copyFile, readFile, rm } from 'node:fs/promises';
 import { realpathSync } from 'node:fs';
 import { spawn, execFileSync } from 'node:child_process';
@@ -61,6 +62,7 @@ try {
     stdio: 'ignore',
   });
   const firstPid = await connect();
+  await dismissWelcome(page);
   const control = path.join(work, 'KJMCL-data');
   const initial = await page.evaluate(() => window.kjmcl.snapshot());
   expect(initial.storage.mode).toBe('portable');

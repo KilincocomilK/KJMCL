@@ -5,6 +5,7 @@ import { Skins } from './core/skins';
 import { CurseForge } from './core/curseforge';
 import { Publishing } from './core/publishing';
 import { featureHandlers } from './features';
+import { prepareGameDirectory } from './core/welcome-directory';
 import { assistantFeatures } from './assistant-features';
 import { skinEditorHandlers } from './skin-editor-features';
 import { SkinEditorStorage } from './core/skin-editor';
@@ -46,6 +47,7 @@ import { LauncherUpdates } from './core/launcher-updates';
 import { Network } from './core/network';
 import { Minecraft } from './core/minecraft';
 import { Java } from './core/java';
+import { configureWelcomeJava, welcomeJavaInfo } from './core/welcome-java';
 import { Auth } from './core/auth';
 import { Mods } from './core/mods';
 import { Packs } from './core/packs';
@@ -433,6 +435,26 @@ app
         storage.completeSetup();
         changed();
       },
+      setWelcome: async (value) => {
+        if (value.step === 'done' && !storage.layout.config.setupComplete) storage.completeSetup();
+        store.setWelcome(value);
+        changed();
+      },
+      markWelcomeConfigured: async (section) => {
+        store.markWelcomeConfigured(section);
+        changed();
+      },
+      prepareGameDirectory: async (choice) => {
+        const result =
+          choice === 'choose'
+            ? await dialog.showOpenDialog(window!, {
+                title: '选择 KJMCL-games 的存放位置',
+                properties: ['openDirectory', 'createDirectory'],
+              })
+            : undefined;
+        if (result && (result.canceled || !result.filePaths.length)) return null;
+        return prepareGameDirectory(store, result?.filePaths[0]);
+      },
       migrateStorage: async (directory) => {
         requireIdle();
         if (terracotta.active) throw new Error('请重启启动器后，在启动陶瓦前迁移数据目录');
@@ -752,6 +774,14 @@ app
           );
       },
       java: () => java.discover(),
+      welcomeJavaInfo: () => welcomeJavaInfo(java),
+      configureWelcomeJava: async (input) =>
+        tasks.start(
+          `配置 Java ${input.major}`,
+          'java',
+          (ctx) => configureWelcomeJava(java, store, input, ctx),
+          'download',
+        ),
       pickJava: async () => {
         const r = await dialog.showOpenDialog(window!, {
           title: '选择 Java 可执行文件',

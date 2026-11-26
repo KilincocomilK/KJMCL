@@ -1,4 +1,4 @@
-import { answerSystemDialog } from './desktop-test-utils.mjs';
+import { answerSystemDialog, dismissWelcome } from './desktop-test-utils.mjs';
 import { _electron as electron, expect } from '@playwright/test';
 import { mkdtemp, mkdir, writeFile, readFile, rm } from 'node:fs/promises';
 import { realpathSync } from 'node:fs';
@@ -22,7 +22,7 @@ let app;
 try {
   app = await electron.launch(options);
   let page = await app.firstWindow();
-  await page.waitForSelector('h1');
+  await dismissWelcome(page);
   const ids = await page.evaluate(async (external) => {
     await window.kjmcl.addOffline('Storage_Test');
     const internal = await window.kjmcl.createInstance({
@@ -80,7 +80,7 @@ try {
   });
   await writeFile(path.join(external, 'world.txt'), 'world-fixture');
   await page.getByRole('button', { name: '启动器设置', exact: true }).click();
-  await page.getByText('账户与存储', { exact: true }).click();
+  await page.getByText('数据与存储', { exact: true }).click();
   await app.evaluate(({ dialog }, target) => {
     dialog.showOpenDialog = async () => ({ canceled: false, filePaths: [target] });
   }, target);

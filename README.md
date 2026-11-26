@@ -4,7 +4,7 @@ KJMCL 是一款黑橙像素风的 Minecraft Java 版桌面启动器。你可以�
 
 ## 下载与使用
 
-Windows x64 提供安装版和便携版。首次使用时，添加账户、选择游戏版本，然后点击「安装游戏」。有新版本时，启动器会在右上角提醒。[下载最新版](https://github.com/KilincocomilK/KJMCL/releases/latest)
+Windows x64 提供安装版和便携版。首次使用时，新玩家可以跟随引导创建游戏文件夹、配置 Java 和添加账户，再选择版本安装游戏。已有游戏的玩家可以直接沿用原目录，也可以创建独立副本。以后仍可从「启动器设置 → 游戏目录与迁移」导入。[下载最新版](https://github.com/KilincocomilK/KJMCL/releases/latest)
 
 ## 功能
 

@@ -4,6 +4,8 @@ import type { ProjectionDocument } from '../shared/projection';
 import { AccountPage } from './pages/Accounts';
 import { ToolboxPage, toolLabels, type ToolId } from './pages/Toolbox';
 import { StorageSetup } from './pages/Storage';
+import { Welcome } from './pages/Welcome';
+import { LauncherImport } from './pages/LauncherImport';
 import { SettingsPage } from './pages/Settings';
 import { MultiplayerPage } from './pages/Multiplayer';
 import { ResourceImport } from './dialogs/ResourceImport';
@@ -46,6 +48,7 @@ export function App() {
     [editing, setEditing] = useState<Instance>();
   const [resourceFiles, setResourceFiles] = useState<ResourceCandidate[]>([]);
   const [folderScan, setFolderScan] = useState<MinecraftScan>();
+  const [launcherImport, setLauncherImport] = useState(false);
   const [pickingFolder, setPickingFolder] = useState(false);
   const [scanningFolder, setScanningFolder] = useState(false);
   const [resourceViews, setResourceViews] = useState<Record<string, ResourceView>>({}),
@@ -128,41 +131,54 @@ export function App() {
     );
   const account = state.accounts.find((a) => a.id === state.selectedAccountId),
     pending = state.tasks.filter((t) => t.status === 'running');
+  const welcoming = !!state.welcome && state.welcome.step !== 'done';
   return (
     <div className={'app-shell ' + (page === 'home' ? 'is-home' : '')}>
-      <ResourceImport state={state} run={run} files={resourceFiles} onFiles={setResourceFiles} />
-      {state.storage?.setupRequired && <StorageSetup state={state} run={run} />}
-      <Sidebar
-        page={page}
-        order={state.sidebarOrder ?? DEFAULT_SIDEBAR_ORDER}
-        onReorder={(order) => {
-          setState((previous) => previous && { ...previous, sidebarOrder: order });
-          void run(async () => {
-            try {
-              await api.setSidebarOrder(order);
-            } catch (error) {
-              await refresh();
-              throw error;
+      {!welcoming && (
+        <ResourceImport state={state} run={run} files={resourceFiles} onFiles={setResourceFiles} />
+      )}
+      {(welcoming ? state.storage?.pendingRestart : state.storage?.setupRequired) && (
+        <StorageSetup state={state} run={run} />
+      )}
+      {!welcoming && (
+        <Sidebar
+          page={page}
+          order={state.sidebarOrder ?? DEFAULT_SIDEBAR_ORDER}
+          onReorder={(order) => {
+            setState((previous) => previous && { ...previous, sidebarOrder: order });
+            void run(async () => {
+              try {
+                await api.setSidebarOrder(order);
+              } catch (error) {
+                await refresh();
+                throw error;
+              }
+            });
+          }}
+          accountName={account?.name}
+          downloads={pending.length}
+          assistantPending={state.assistantPending ?? 0}
+          hasUpdate={state.launcherUpdate?.status === 'available'}
+          onNavigate={(next) => {
+            if (next === 'toolbox') {
+              setTool(undefined);
+              setProjectionReturn(false);
             }
-          });
-        }}
-        accountName={account?.name}
-        downloads={pending.length}
-        assistantPending={state.assistantPending ?? 0}
-        hasUpdate={state.launcherUpdate?.status === 'available'}
-        onNavigate={(next) => {
-          if (next === 'toolbox') {
-            setTool(undefined);
-            setProjectionReturn(false);
-          }
-          navigate(next);
-        }}
-      />
+            navigate(next);
+          }}
+        />
+      )}
       <div className="main-shell">
         <Background state={state} />
         <header className="titlebar">
-          <h1>{page === 'toolbox' && tool ? toolLabels[tool] : navigation[page].label}</h1>
-          {page === 'home' && (
+          <h1>
+            {welcoming
+              ? '首次使用引导'
+              : page === 'toolbox' && tool
+                ? toolLabels[tool]
+                : navigation[page].label}
+          </h1>
+          {!welcoming && page === 'home' && (
             <button
               className="site-link"
               onClick={() => void run(() => api.external('https://kjmc.top'))}
@@ -186,139 +202,158 @@ export function App() {
             </button>
           </div>
         </header>
-        <main
-          ref={main}
-          data-page={page}
-          className={
-            page === 'home' ? 'home-main' : page === 'assistant' ? 'assistant-main' : undefined
-          }
-        >
-          {page === 'home' && (
-            <HomePage
+        {welcoming ? (
+          <main data-page="welcome">
+            <Welcome
               state={state}
               run={run}
-              onCreate={() => setCreate(true)}
-              onEdit={setEditing}
-              onAccounts={() => navigate('accounts')}
-              onLibrary={() => navigate('instances')}
-            />
-          )}
-          {page === 'instances' && (
-            <LibraryPage
-              pickingFolder={pickingFolder}
-              onPickFolder={async () => {
-                if (pickingFolder) return;
-                setPickingFolder(true);
-                try {
-                  await run(async () => {
-                    const scan = await api.scanMinecraft();
-                    if (scan) setFolderScan(scan);
-                  });
-                } finally {
-                  setPickingFolder(false);
-                }
+              onFinish={(createInstance) => {
+                navigate('home');
+                setCreate(createInstance);
               }}
-              state={state}
-              run={run}
-              onEdit={setEditing}
-              onCreate={() => setCreate(true)}
-              onHome={() => navigate('home')}
             />
-          )}
-          {assistantVisited && (
-            <Suspense fallback={page === 'assistant' ? <p role="status">正在载入助手…</p> : null}>
-              <AssistantPage
+          </main>
+        ) : (
+          <main
+            ref={main}
+            data-page={page}
+            className={
+              page === 'home' ? 'home-main' : page === 'assistant' ? 'assistant-main' : undefined
+            }
+          >
+            {page === 'home' && (
+              <HomePage
                 state={state}
-                active={page === 'assistant'}
-                diagnosis={diagnosisRequest}
-                onDiagnosisReady={clearDiagnosisRequest}
+                run={run}
+                onCreate={() => setCreate(true)}
+                onEdit={setEditing}
+                onAccounts={() => navigate('accounts')}
+                onLibrary={() => navigate('instances')}
               />
-            </Suspense>
-          )}
-          {page === 'resources' && (
-            <ResourcesPage
-              key={state.selectedInstanceId}
-              state={state}
-              run={run}
-              refreshKey={resourceFiles.length}
-              onImport={setResourceFiles}
-              onLibrary={() => navigate('instances')}
-              view={resourceViews[state.selectedInstanceId ?? ''] ?? { kind: 'mods', query: '' }}
-              onView={(view) =>
-                setResourceViews((values) => ({
-                  ...values,
-                  [state.selectedInstanceId ?? '']: view,
-                }))
-              }
-              onProjection={(document) => {
-                setProjectionDocument(document);
-                setProjectionReturn(true);
-                setTool('projection');
-                navigate('toolbox');
-              }}
-            />
-          )}
-          {isWorkspace(page) && (
-            <ConsolidatedWorkspace
-              workspace={page}
-              onLibrary={() => navigate('instances')}
-              tab={workspaceTab}
-              onTab={setWorkspaceTab}
-              onDiagnose={(instanceId) => {
-                setDiagnosisRequest({ id: crypto.randomUUID(), instanceId });
-                navigate('assistant');
-              }}
-              state={state}
-              run={run}
-              onSeedMap={(world) => {
-                setSeedWorld(world);
-                setTool('seed-map');
-                navigate('toolbox');
-              }}
-            />
-          )}
-          {page === 'multiplayer' && <MultiplayerPage state={state} run={run} />}
-          {page === 'accounts' && (
-            <AccountPage
-              state={state}
-              run={run}
-              onEditSkin={(id) => {
-                setSkinAccountId(id);
-                setTool('skin-editor');
-                navigate('toolbox');
-              }}
-            />
-          )}
-          {toolboxVisited && (
-            <ToolboxPage
-              state={state}
-              run={run}
-              active={page === 'toolbox'}
-              tool={tool}
-              onTool={setTool}
-              skinAccountId={skinAccountId}
-              onSkinImported={clearSkinAccount}
-              world={seedWorld}
-              onWorldImported={clearSeedWorld}
-              projectionDocument={projectionDocument}
-              onProjectionImported={clearProjectionDocument}
-              onProjectionBack={
-                projectionReturn
-                  ? () => {
-                      setProjectionReturn(false);
-                      navigate('resources');
-                    }
-                  : undefined
-              }
-            />
-          )}
-          {page === 'downloads' && (
-            <DownloadsPage tasks={state.tasks} selected={selectedTask} run={run} />
-          )}
-          {page === 'settings' && (
-            <SettingsPage key={JSON.stringify(state.settings)} state={state} run={run} />
-          )}
-        </main>
+            )}
+            {page === 'instances' && (
+              <LibraryPage
+                pickingFolder={pickingFolder}
+                onPickFolder={async () => {
+                  if (pickingFolder) return;
+                  setPickingFolder(true);
+                  try {
+                    await run(async () => {
+                      const scan = await api.scanMinecraft();
+                      if (scan) setFolderScan(scan);
+                    });
+                  } finally {
+                    setPickingFolder(false);
+                  }
+                }}
+                state={state}
+                run={run}
+                onEdit={setEditing}
+                onCreate={() => setCreate(true)}
+                onHome={() => navigate('home')}
+              />
+            )}
+            {assistantVisited && (
+              <Suspense fallback={page === 'assistant' ? <p role="status">正在载入助手…</p> : null}>
+                <AssistantPage
+                  state={state}
+                  active={page === 'assistant'}
+                  diagnosis={diagnosisRequest}
+                  onDiagnosisReady={clearDiagnosisRequest}
+                />
+              </Suspense>
+            )}
+            {page === 'resources' && (
+              <ResourcesPage
+                key={state.selectedInstanceId}
+                state={state}
+                run={run}
+                refreshKey={resourceFiles.length}
+                onImport={setResourceFiles}
+                onLibrary={() => navigate('instances')}
+                view={resourceViews[state.selectedInstanceId ?? ''] ?? { kind: 'mods', query: '' }}
+                onView={(view) =>
+                  setResourceViews((values) => ({
+                    ...values,
+                    [state.selectedInstanceId ?? '']: view,
+                  }))
+                }
+                onProjection={(document) => {
+                  setProjectionDocument(document);
+                  setProjectionReturn(true);
+                  setTool('projection');
+                  navigate('toolbox');
+                }}
+              />
+            )}
+            {isWorkspace(page) && (
+              <ConsolidatedWorkspace
+                workspace={page}
+                onLibrary={() => navigate('instances')}
+                tab={workspaceTab}
+                onTab={setWorkspaceTab}
+                onDiagnose={(instanceId) => {
+                  setDiagnosisRequest({ id: crypto.randomUUID(), instanceId });
+                  navigate('assistant');
+                }}
+                state={state}
+                run={run}
+                onSeedMap={(world) => {
+                  setSeedWorld(world);
+                  setTool('seed-map');
+                  navigate('toolbox');
+                }}
+              />
+            )}
+            {page === 'multiplayer' && <MultiplayerPage state={state} run={run} />}
+            {page === 'accounts' && (
+              <AccountPage
+                state={state}
+                run={run}
+                onEditSkin={(id) => {
+                  setSkinAccountId(id);
+                  setTool('skin-editor');
+                  navigate('toolbox');
+                }}
+              />
+            )}
+            {toolboxVisited && (
+              <ToolboxPage
+                state={state}
+                run={run}
+                active={page === 'toolbox'}
+                tool={tool}
+                onTool={setTool}
+                skinAccountId={skinAccountId}
+                onSkinImported={clearSkinAccount}
+                world={seedWorld}
+                onWorldImported={clearSeedWorld}
+                projectionDocument={projectionDocument}
+                onProjectionImported={clearProjectionDocument}
+                onProjectionBack={
+                  projectionReturn
+                    ? () => {
+                        setProjectionReturn(false);
+                        navigate('resources');
+                      }
+                    : undefined
+                }
+              />
+            )}
+            {page === 'downloads' && (
+              <DownloadsPage tasks={state.tasks} selected={selectedTask} run={run} />
+            )}
+            {page === 'settings' && (
+              <SettingsPage
+                key={JSON.stringify(state.settings)}
+                state={state}
+                run={run}
+                onImport={() => setLauncherImport(true)}
+                onLibrary={() => navigate('instances')}
+              />
+            )}
+          </main>
+        )}
         {state.running.length > 0 && (
           <footer className="statusbar">
             <button onClick={() => void run(() => api.setLightweight(true))}>进入轻量模式</button>
@@ -327,6 +362,9 @@ export function App() {
       </div>
       {folderScan && (
         <ImportDialog scan={folderScan} run={run} onClose={() => setFolderScan(undefined)} />
+      )}
+      {launcherImport && (
+        <LauncherImport state={state} run={run} onClose={() => setLauncherImport(false)} />
       )}
       {create && <CreateDialog state={state} run={run} onClose={() => setCreate(false)} />}
       {editing && (
@@ -338,8 +376,8 @@ export function App() {
         />
       )}
       <ActivityNotifications
-        tasks={state.tasks}
-        update={state.launcherUpdate}
+        tasks={welcoming ? [] : state.tasks}
+        update={welcoming ? undefined : state.launcherUpdate}
         currentVersion={state.appVersion}
         visible={windowVisible}
         dismiss={dismiss}

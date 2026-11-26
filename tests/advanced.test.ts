@@ -13,7 +13,7 @@ import {
 } from 'node:fs/promises';
 import { createHash } from 'node:crypto';
 import AdmZip from 'adm-zip';
-import { Store } from '../electron/core/store';
+import { STATE_VERSION, Store } from '../electron/core/store';
 import { Network } from '../electron/core/network';
 import {
   Instances,
@@ -91,7 +91,7 @@ it('migrates v1 without losing directories or the original backup', async () => 
   delete v1.instances[0].gameDir;
   await atomicJson(path.join(store.root, 'state.json'), v1);
   const migrated = new Store(store.root);
-  expect(migrated.data.schemaVersion).toBe(9);
+  expect(migrated.data.schemaVersion).toBe(STATE_VERSION);
   expect(migrated.dir('source')).toBe(path.join(store.root, 'instances/source'));
   expect(
     JSON.parse(await readFile(path.join(store.root, 'state.json.v1.bak'), 'utf8')).schemaVersion,
