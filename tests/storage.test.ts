@@ -78,9 +78,10 @@ it('migrates managed backgrounds and schema backups with the data directory', as
   expect(new Store(target).data.sidebarOrder).toEqual(sidebarOrder);
   expect(new Store(target).data.welcomeConfigured).toEqual(['newDirectory']);
 });
-it('moves assistant conversations, settings and encrypted credential files together', async () => {
+it('moves conversations, credentials and pack recovery files with the data directory', async () => {
   const { store, storage, target } = await fixture();
-  const files = ['assistant/config.json', 'assistant/chats/example.json', 'credentials/ai-mcp-token.vault'];
+  const files = ['assistant/config.json', 'assistant/chats/example.json', 'credentials/ai-mcp-token.vault',
+    'pack-archives/fixture.zip', 'pack-progress/instance/fixture/123.json', 'backups/instance/mod-updates/last.json'];
   for (const file of files) {
     await mkdir(path.dirname(path.join(store.root, file)), { recursive: true });
     await writeFile(path.join(store.root, file), 'migration fixture');

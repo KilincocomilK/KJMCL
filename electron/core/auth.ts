@@ -6,6 +6,8 @@ import { setTimeout as delay } from 'node:timers/promises';
 import { Network } from './network';
 import { Store } from './store';
 import { Tasks } from './tasks';
+import { exchangeMicrosoftSession } from './microsoft-session';
+import { microsoftClientId } from './microsoft-client';
 import type { Account, DeviceCode } from '../../shared/types';
 import type { Yggdrasil } from './yggdrasil';
 const authority = 'https://login.microsoftonline.com/consumers/oauth2/v2.0';
@@ -14,6 +16,7 @@ export class Auth {
   thirdParty?: Yggdrasil;
   private login?: AbortController;
   private loginTask?: string;
+  pendingCode?: DeviceCode;
   private access = new Map<string, { token: string; expires: number }>();
   redactionValues() {
     return [...this.access.values()].map((v) => v.token);
@@ -24,11 +27,6 @@ export class Auth {
     private tasks: Tasks,
     private changed: () => void,
   ) {}
-  private client() {
-    const id = this.store.data.settings.microsoftClientId;
-    if (!id) throw new Error('请先在账户管理中填写 Microsoft Client ID');
-    return id;
-  }
   private secure() {
     if (
       !safeStorage.isEncryptionAvailable() ||
@@ -52,14 +50,36 @@ export class Auth {
     if (this.loginTask) this.tasks.cancel(this.loginTask);
     this.login?.abort();
     this.login = undefined;
+    this.pendingCode = undefined;
+    this.changed();
   }
-  async begin(): Promise<DeviceCode> {
-    const client_id = this.client();
+  async begin(accountId?: string): Promise<DeviceCode> {
+    const account = this.store.data.accounts.find((a) => a.id === accountId);
+    if (accountId && account?.kind !== 'microsoft') throw new Error('请选择已有的 Microsoft 账户');
+    const client_id = microsoftClientId(
+      account?.microsoftClientId || this.store.data.settings.microsoftClientId,
+    );
     const welcomeLogin = this.store.data.welcome.step === 'account';
     this.secure();
-    if (this.tasks.busy('auth')) throw new Error('请先取消当前登录');
+    if (this.login || this.tasks.busy('auth')) throw new Error('请先取消当前登录');
     const controller = new AbortController();
     this.login = controller;
+    try {
+      return await this.requestCode(client_id, welcomeLogin, controller, account);
+    } catch (error) {
+      if (this.login === controller) {
+        this.login = undefined;
+        this.pendingCode = undefined;
+      }
+      throw error;
+    }
+  }
+  private async requestCode(
+    client_id: string,
+    welcomeLogin: boolean,
+    controller: AbortController,
+    reauthorizing?: Account,
+  ) {
     const data = await this.net.json<any>(authority + '/devicecode', {
       method: 'POST',
       headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
@@ -67,6 +87,9 @@ export class Auth {
       signal: controller.signal,
     });
     const expiresAt = Date.now() + data.expires_in * 1000;
+    controller.signal.throwIfAborted();
+    const code = { userCode: data.user_code, verificationUri: data.verification_uri, expiresAt };
+    this.pendingCode = code;
     this.loginTask = this.tasks.start('Microsoft 登录', 'auth', async (ctx) => {
       const signal = AbortSignal.any([ctx.signal, controller.signal]);
       let interval = (data.interval ?? 5) * 1000;
@@ -91,13 +114,29 @@ export class Auth {
           }
           if (!r.ok)
             throw new Error(
-              token.error === 'authorization_declined'
-                ? '已取消授权'
-                : 'Microsoft 授权失败，请重试',
+              token.error === 'expired_token'
+                ? '登录码已过期，请重新登录'
+                : token.error === 'authorization_declined'
+                  ? '已取消授权'
+                  : 'Microsoft 授权失败，请重试',
             );
-          ctx.progress(70, '验证 Minecraft 账户');
-          const profile = await this.exchange(token.access_token, signal);
+          if (
+            typeof token.access_token !== 'string' ||
+            !token.access_token ||
+            typeof token.refresh_token !== 'string' ||
+            !token.refresh_token
+          )
+            throw new Error('Microsoft 未返回完整的登录凭据，请重新授权。');
+          this.pendingCode = undefined;
+          const profile = await exchangeMicrosoftSession(
+            this.net,
+            token.access_token,
+            signal,
+            ctx.progress,
+          );
           signal.throwIfAborted();
+          if (reauthorizing && reauthorizing.uuid !== profile.uuid)
+            throw new Error('登录的 Minecraft 角色与待授权账户不同，请使用原账户重新授权。');
           const existing = this.store.data.accounts.find(
             (a) => a.uuid === profile.uuid && a.kind === 'microsoft',
           );
@@ -105,6 +144,7 @@ export class Auth {
             ...profile,
             id: existing?.id ?? randomUUID(),
             kind: 'microsoft',
+            microsoftClientId: client_id,
           };
           await this.save(account.id, token.refresh_token);
           this.access.set(account.id, { token: profile.token, expires: profile.expires });
@@ -122,57 +162,13 @@ export class Auth {
         }
         throw new Error('登录码已过期');
       } finally {
-        if (this.login === controller) this.login = undefined;
+        if (this.login === controller) {
+          this.login = undefined;
+          this.pendingCode = undefined;
+        }
       }
     });
-    return { userCode: data.user_code, verificationUri: data.verification_uri, expiresAt };
-  }
-  private async exchange(msToken: string, signal: AbortSignal) {
-    const post = (url: string, body: unknown) =>
-      this.net.json<any>(url, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(body),
-        signal,
-      });
-    const xbl = await post('https://user.auth.xboxlive.com/user/authenticate', {
-      Properties: {
-        AuthMethod: 'RPS',
-        SiteName: 'user.auth.xboxlive.com',
-        RpsTicket: 'd=' + msToken,
-      },
-      RelyingParty: 'http://auth.xboxlive.com',
-      TokenType: 'JWT',
-    });
-    let xsts;
-    try {
-      xsts = await post('https://xsts.auth.xboxlive.com/xsts/authorize', {
-        Properties: { SandboxId: 'RETAIL', UserTokens: [xbl.Token] },
-        RelyingParty: 'rp://api.minecraftservices.com/',
-        TokenType: 'JWT',
-      });
-    } catch {
-      throw new Error('Xbox 授权失败，请检查 Xbox 档案、家庭权限及应用授权');
-    }
-    const mc = await post('https://api.minecraftservices.com/authentication/login_with_xbox', {
-      identityToken: `XBL3.0 x=${xsts.DisplayClaims.xui[0].uhs};${xsts.Token}`,
-    });
-    let profile;
-    try {
-      profile = await this.net.json<any>('https://api.minecraftservices.com/minecraft/profile', {
-        headers: { Authorization: 'Bearer ' + mc.access_token },
-        signal,
-      });
-    } catch {
-      throw new Error('未获取到 Java 版游戏档案，请确认账户拥有 Minecraft Java 版');
-    }
-    return {
-      uuid: profile.id,
-      name: profile.name,
-      skin: profile.skins?.find((s: any) => s.state === 'ACTIVE')?.url,
-      token: mc.access_token,
-      expires: Date.now() + mc.expires_in * 1000 - 120000,
-    };
+    return code;
   }
   async token(account: Account) {
     if (account.kind === 'offline') return '0';
@@ -189,7 +185,8 @@ export class Auth {
     } catch {
       throw new Error('账户凭据不可用，请重新登录');
     }
-    const client_id = this.client();
+    const client_id =
+      account.microsoftClientId ?? microsoftClientId(this.store.data.settings.microsoftClientId);
     const r = await this.net.json<any>(authority + '/token', {
       method: 'POST',
       headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
@@ -200,7 +197,11 @@ export class Auth {
         scope,
       }).toString(),
     });
-    const profile = await this.exchange(r.access_token, AbortSignal.timeout(120000));
+    const profile = await exchangeMicrosoftSession(
+      this.net,
+      r.access_token,
+      AbortSignal.timeout(120000),
+    );
     if (r.refresh_token) await this.save(account.id, r.refresh_token);
     this.access.set(account.id, { token: profile.token, expires: profile.expires });
     return profile.token;

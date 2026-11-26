@@ -30,7 +30,7 @@ import {
   welcomeSectionSchema,
 } from '../../shared/schema';
 import { z } from 'zod';
-export const STATE_VERSION = 11;
+export const STATE_VERSION = 12;
 
 export function supportsStateVersion(value: unknown) {
   return (
@@ -121,9 +121,17 @@ export class Store {
         loaded.schemaVersion < 11
           ? []
           : z.array(welcomeSectionSchema).parse(loaded.welcomeConfigured);
-      loaded.schemaVersion = STATE_VERSION;
       loaded.settings = settingsSchema.parse(loaded.settings);
+      if (loaded.schemaVersion < 12 && loaded.settings.microsoftClientId) {
+        for (const account of loaded.accounts)
+          if (account.kind === 'microsoft')
+            account.microsoftClientId ??= loaded.settings.microsoftClientId;
+      }
       loaded.instances = loaded.instances.map((v) => {
+        if (loaded.schemaVersion < 12 && v.lastPlayed !== undefined) {
+          Object.assign(v, { lastLaunchedAt: v.lastPlayed });
+          delete v.lastPlayed;
+        }
         if (
           v.external &&
           (!v.gameDir ||
@@ -139,11 +147,16 @@ export class Store {
           gameDir: v.gameDir || path.join(root, 'instances', v.id),
         });
       });
+      loaded.schemaVersion = STATE_VERSION;
       this.data = loaded;
       for (const i of this.data.instances)
-        if (i.status === 'installing') {
+        if (i.status === 'installing' || (i.versionTrial && i.status === 'ready')) {
           i.status = 'error';
-          i.error = '上次安装中断，请重试';
+          i.error = i.versionTrial
+            ? '版本试更中断，可继续准备副本'
+            : i.packInstall
+              ? '整合包安装中断，可继续安装'
+              : '上次安装中断，请重试';
         }
       if (migrating) this.save();
     }

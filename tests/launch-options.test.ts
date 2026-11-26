@@ -115,6 +115,15 @@ describe('instance launch preferences', () => {
       '[::1]:25565',
     ]);
     const normal = await prepareLaunchOptions(version, root);
+    const traced = await prepareLaunchOptions(version, root, undefined, 'fixture');
+    const tracedArgs = expandArguments(
+      version.arguments!.game!,
+      { ...variables, ...traced.variables },
+      traced.features,
+    );
+    expect(tracedArgs).toContain('logs/kjmcl-world-fixture.json');
+    expect(tracedArgs).not.toContain('--quickPlayMultiplayer');
+    expect(tracedArgs).not.toContain('--quickPlaySingleplayer');
     expect(expandArguments(version.arguments!.game!, variables, normal.features)).toEqual([
       '--username',
       'Player',

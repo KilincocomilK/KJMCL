@@ -420,10 +420,13 @@ describe('durable diagnosis', () => {
     const old = JSON.parse(await readFile(file, 'utf8'));
     old.schemaVersion = 2;
     old.instances[0].memoryMb = 7168;
+    old.instances[0].lastPlayed = 1700000000000;
     await atomicJson(file, old);
     const migrated = new Store(store.root);
     expect(migrated.data.schemaVersion).toBe(STATE_VERSION);
     expect(migrated.instance('test').memoryMb).toBe(7168);
+    expect(migrated.instance('test').lastLaunchedAt).toBe(1700000000000);
+    expect(migrated.instance('test').lastPlayed).toBeUndefined();
     expect(migrated.instance('test').performance?.memory).toBe('manual');
     expect(JSON.parse(await readFile(file + '.v2.bak', 'utf8'))).toEqual(old);
   });

@@ -240,7 +240,12 @@ export class Minecraft {
     }
     return files;
   }
-  async install(id: string, ctx: Work, finalStatus: 'ready' | 'installing' = 'ready') {
+  async install(
+    id: string,
+    ctx: Work,
+    finalStatus: 'ready' | 'installing' = 'ready',
+    cachedProfile?: Version,
+  ) {
     const i = this.store.instance(id);
     if (i.external) throw new Error('外部版本请在原启动器安装或修复，然后刷新游戏文件夹');
     i.status = 'installing';
@@ -248,7 +253,7 @@ export class Minecraft {
     this.store.save();
     try {
       ctx.progress(1, '获取版本信息');
-      let v = await this.metadata(id, ctx.signal);
+      let v = cachedProfile ?? await this.metadata(id, ctx.signal);
       if (!v.downloads?.client || !v.assetIndex) throw new Error('版本元数据不完整');
       const root = this.store.dir(id);
       await mkdir(root, { recursive: true });

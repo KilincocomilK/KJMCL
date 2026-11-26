@@ -17,6 +17,6 @@ if [[ "$ready" != true ]]; then
   cat /tmp/kjmcl-openbox.log
   exit 1
 fi
-for test in welcome-desktop desktop resource-desktop save-desktop library-desktop lightweight-desktop folders-desktop mod-resources-desktop appearance-desktop assistant-desktop; do
+for test in welcome-desktop desktop resource-desktop save-desktop library-desktop upgrade-desktop lightweight-desktop folders-desktop mod-resources-desktop appearance-desktop assistant-desktop; do
   node "scripts/${test}-smoke.mjs"
 done

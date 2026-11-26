@@ -22,6 +22,10 @@ import { ItemArt } from '../components/ItemArt';
 import { SplitView } from '../components/SplitView';
 import { Select } from '../Select';
 import { type Run, loaderLabel, statusLabel, date } from '../ui';
+import { PackPreviewDialog } from '../dialogs/PackPreviewDialog';
+import { ContentBrowser } from './ContentBrowser';
+import '../resources.css';
+import type { PackPreview } from '../../shared/pack';
 import '../game-folders.css';
 
 const blank: InstanceOrganization = { favorite: false, group: '', tags: [], notes: '' };
@@ -50,6 +54,8 @@ export function LibraryPage({
     [sort, setSort] = useState('recent'),
     [editing, setEditing] = useState<Instance>();
   const selectedFolder = state.gameFolders.find((f) => f.id === state.selectedGameFolderId);
+  const [pack, setPack] = useState<PackPreview>();
+  const [browsePacks, setBrowsePacks] = useState(false);
   const folderInstances = state.instances.filter((i) =>
     selectedFolder ? i.external?.folderId === selectedFolder.id : !i.external,
   );
@@ -235,11 +241,20 @@ export function LibraryPage({
               {selectedFolder.path}
             </span>
           )}
-          <button onClick={() => void run(() => api.importPack())}>
+          <button aria-expanded={browsePacks} onClick={() => setBrowsePacks(!browsePacks)}>
+            查找整合包
+          </button>
+          <button
+            onClick={async () => {
+              const value = await run(() => api.previewPack());
+              if (value) setPack(value);
+            }}
+          >
             <Upload size={15} />
             导入整合包
           </button>
         </div>
+        {browsePacks && <ContentBrowser kind="modpack" state={state} run={run} />}
         {selectedFolder?.error && (
           <p className="inline-error" role="alert">
             文件夹暂不可用：{selectedFolder.error}
@@ -318,8 +333,8 @@ export function LibraryPage({
                 </dd>
               </div>
               <div>
-                <dt>最近启动</dt>
-                <dd>{date(current.lastPlayed)}</dd>
+                <dt>最近游玩</dt>
+                <dd>{current.lastPlayed ? date(current.lastPlayed) : '尚无入世记录'}</dd>
               </div>
               <div>
                 <dt>游玩时长</dt>
@@ -366,6 +381,14 @@ export function LibraryPage({
           />
         )}
       </SplitView>
+      {pack && (
+        <PackPreviewDialog
+          preview={pack}
+          state={state}
+          run={run}
+          onClose={() => setPack(undefined)}
+        />
+      )}
       {editing && (
         <Organize
           key={editing.id}

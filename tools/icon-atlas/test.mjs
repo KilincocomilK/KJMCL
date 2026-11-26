@@ -66,6 +66,17 @@ try {
   });
   await expect(cards).toHaveCount(count);
   await expect(page.locator('.card input[type=file]')).toHaveCount(count);
+  for (const [id, filename] of [
+    ['brand/application', 'KJMCL_icon.png'],
+    ['inline/components/Brand', 'KJMCL_icon_02.png'],
+  ]) {
+    const reference = await page.evaluate((id) => {
+      const { items } = JSON.parse(document.getElementById('inventory').textContent);
+      return items.find((item) => item.id === id)?.image;
+    }, id);
+    const artwork = await readFile(new URL('../../resources/icons/' + filename, import.meta.url));
+    assert.equal(reference, 'data:image/png;base64,' + artwork.toString('base64'));
+  }
   const refDownload = page.waitForEvent('download');
   await page.getByRole('button', { name: '下载全部参考图' }).click();
   const refZip = path.join(root, 'refs.zip');

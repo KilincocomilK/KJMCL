@@ -228,6 +228,7 @@ export function App() {
                 onCreate={() => setCreate(true)}
                 onEdit={setEditing}
                 onAccounts={() => navigate('accounts')}
+                onDiagnostics={() => navigate('diagnostics', 'performance')}
                 onLibrary={() => navigate('instances')}
               />
             )}

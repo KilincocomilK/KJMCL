@@ -40,7 +40,6 @@ type Extra = Pick<
   | 'integrationKey'
   | 'searchCurseForge'
   | 'installCurseForge'
-  | 'updateCurseForge'
   | 'preparePack'
   | 'publishPack'
 >;
@@ -278,10 +277,6 @@ export function featureHandlers(c: {
         (ctx) => cf.install(v.id, v.projectId, ctx),
         'download',
       );
-    },
-    updateCurseForge: async (id) => {
-      await writable(id);
-      return tasks.start('更新 CurseForge 模组', id, (ctx) => cf.update(id, ctx), 'download');
     },
     preparePack: async (v) => {
       await writable(v.id);

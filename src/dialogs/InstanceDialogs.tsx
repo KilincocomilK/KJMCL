@@ -12,16 +12,18 @@ export function CreateDialog({
   state,
   run,
   onClose,
+  trialSource,
 }: {
   state: Snapshot;
   run: Run;
   onClose: () => void;
+  trialSource?: Instance;
 }) {
   const [versions, setVersions] = useState<VersionSummary[]>([]),
-    [version, setVersion] = useState(''),
-    [name, setName] = useState(''),
-    [loader, setLoader] = useState<Loader>('vanilla'),
-    [lv, setLv] = useState(''),
+    [version, setVersion] = useState(trialSource?.version ?? ''),
+    [name, setName] = useState(trialSource ? trialSource.name.slice(0, 75) + ' · 试更' : ''),
+    [loader, setLoader] = useState<Loader>(trialSource?.loader ?? 'vanilla'),
+    [lv, setLv] = useState(trialSource?.loaderVersion ?? ''),
     [loaders, setLoaders] = useState<string[]>([]),
     [snap, setSnap] = useState(state.settings.showSnapshots),
     [old, setOld] = useState(false),
@@ -32,7 +34,8 @@ export function CreateDialog({
     [gameDir, setGameDir] = useState('');
   const visibleVersions = versions.filter(
     (v) =>
-      (v.type === 'release' ||
+      (v.id === trialSource?.version ||
+        v.type === 'release' ||
         (snap && v.type === 'snapshot') ||
         (old && ['old_alpha', 'old_beta'].includes(v.type))) &&
       matchesSearch(versionQuery, v.id, v.type),
@@ -48,7 +51,7 @@ export function CreateDialog({
       .then((v) => {
         if (live) {
           setVersions(v);
-          setVersion(v.find((x) => x.type === 'release')?.id ?? '');
+          setVersion(trialSource?.version ?? v.find((x) => x.type === 'release')?.id ?? '');
         }
       })
       .catch((e) => {
@@ -62,16 +65,20 @@ export function CreateDialog({
     };
   }, []);
   useEffect(() => {
+    const current =
+      version === trialSource?.version && loader === trialSource.loader
+        ? trialSource.loaderVersion
+        : undefined;
     setLoaders([]);
-    setLv('');
+    setLv(current ?? '');
     if (loader === 'vanilla' || !version) return;
     let live = true;
     api
       .loaders({ version, loader })
       .then((v) => {
         if (live) {
-          setLoaders(v);
-          setLv(v[0] ?? '');
+          setLoaders(current && !v.includes(current) ? [current, ...v] : v);
+          setLv(current ?? v[0] ?? '');
         }
       })
       .catch((e) => {
@@ -84,15 +91,22 @@ export function CreateDialog({
   const submit = async (e: FormEvent, install = true) => {
     e.preventDefault();
     setBusy(true);
-    const id = await run(() =>
-      api.createInstance({
-        name: name.trim() || `Minecraft ${version}`,
-        version,
-        loader,
-        loaderVersion: lv || undefined,
-        gameDir: gameDir || undefined,
-      }),
-    );
+    const target = {
+      name: name.trim() || `Minecraft ${version}`,
+      version,
+      loader,
+      loaderVersion: lv || undefined,
+    };
+    if (trialSource) {
+      const task = await run(
+        () => api.trialVersion({ sourceId: trialSource.id, ...target }),
+        '正在准备试更副本',
+      );
+      setBusy(false);
+      if (task) onClose();
+      return;
+    }
+    const id = await run(() => api.createInstance({ ...target, gameDir: gameDir || undefined }));
     if (id) {
       if (install) await run(() => api.install(id));
       onClose();
@@ -100,7 +114,7 @@ export function CreateDialog({
     setBusy(false);
   };
   return (
-    <Modal title="新建游戏实例" onClose={onClose}>
+    <Modal title={trialSource ? '副本试更' : '新建游戏实例'} onClose={onClose}>
       <form onSubmit={(e) => void submit(e)}>
         <div className="form-body">
           <Field label="实例名称">
@@ -111,7 +125,16 @@ export function CreateDialog({
               onChange={(e) => setName(e.target.value)}
             />
           </Field>
-          <DirectoryField value={gameDir} onChange={setGameDir} />
+          {trialSource ? (
+            <p className="inline-note">
+              原实例 · {trialSource.name} · {trialSource.version} /{' '}
+              {loaderLabel[trialSource.loader]} {trialSource.loaderVersion}
+              <br />
+              新副本带入原模组与配置。存档优先复用内容一致的备份，变动后重新备份。
+            </p>
+          ) : (
+            <DirectoryField value={gameDir} onChange={setGameDir} />
+          )}
           <div className="row">
             <span className="label">游戏版本</span>
             <label className="check">
@@ -188,11 +211,18 @@ export function CreateDialog({
           )}
         </div>
         <div className="modal-footer">
-          <button type="button" disabled={!version || busy} onClick={(e) => void submit(e, false)}>
-            仅创建
-          </button>
+          {!trialSource && (
+            <button
+              type="button"
+              disabled={!version || busy}
+              onClick={(e) => void submit(e, false)}
+            >
+              仅创建
+            </button>
+          )}
           <button className="primary" disabled={!version || busy}>
-            {busy ? <LoaderCircle className="spin" size={16} /> : <Download size={16} />}创建并安装
+            {busy ? <LoaderCircle className="spin" size={16} /> : <Download size={16} />}
+            {trialSource ? '创建试更副本' : '创建并安装'}
           </button>
         </div>
       </form>
@@ -213,7 +243,9 @@ export function EditDialog({
 }) {
   const [i, set] = useState({ ...instance }),
     [args, setArgs] = useState(instance.jvmArgs.join('\n')),
-    [advanced, setAdvanced] = useState<'clone' | 'publish'>();
+    [advanced, setAdvanced] = useState<'clone' | 'publish' | 'trial'>();
+  if (advanced === 'trial')
+    return <CreateDialog trialSource={instance} state={state} run={run} onClose={onClose} />;
   if (advanced === 'clone')
     return <CloneDialog instance={instance} run={run} onClose={() => setAdvanced(undefined)} />;
   if (advanced === 'publish')
@@ -300,6 +332,11 @@ export function EditDialog({
             </Field>
           )}
           <div className="row">
+            {instance.status === 'ready' && (
+              <button type="button" onClick={() => setAdvanced('trial')}>
+                副本试更
+              </button>
+            )}
             {!instance.external && (
               <button type="button" onClick={() => setAdvanced('clone')}>
                 克隆实例
@@ -366,7 +403,7 @@ export function EditDialog({
           </div>
           {i.error && <p className="inline-error">{i.error}</p>}
           <div className="row">
-            <small>最近启动：{date(i.lastPlayed)}</small>
+            <small>最近启动：{date(i.lastLaunchedAt)}</small>
             <small>累计游玩：{Math.floor(i.playTime / 60000)} 分钟</small>
           </div>
         </div>

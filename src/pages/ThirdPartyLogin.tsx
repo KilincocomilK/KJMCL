@@ -11,9 +11,19 @@ const servers = [
   { name: 'KJMC', url: 'https://api.kjmc.top/api/yggdrasil' },
 ];
 
-export function ThirdPartyLogin({ run, onConfigured }: { run: Run; onConfigured?: () => void }) {
-  const [service, setService] = useState(servers[0].url);
-  const [custom, setCustom] = useState('');
+export function ThirdPartyLogin({
+  run,
+  onConfigured,
+  initialServer,
+}: {
+  run: Run;
+  onConfigured?: () => void;
+  initialServer?: string;
+}) {
+  const [service, setService] = useState(
+    initialServer ? (servers.find((s) => s.url === initialServer)?.url ?? '') : servers[0].url,
+  );
+  const [custom, setCustom] = useState(initialServer ?? '');
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [profiles, setProfiles] = useState<Account[]>([]);
@@ -26,7 +36,12 @@ export function ThirdPartyLogin({ run, onConfigured }: { run: Run; onConfigured?
     setProfiles([]);
   };
   return (
-    <SettingGroup title="第三方账户" art="gear" className="third-login">
+    <SettingGroup
+      title="第三方账户"
+      art="gear"
+      className="third-login"
+      open={initialServer ? true : undefined}
+    >
       <form
         onSubmit={async (e) => {
           e.preventDefault();

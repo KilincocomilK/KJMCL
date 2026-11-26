@@ -1,5 +1,7 @@
 import { constants } from 'node:fs';
-import { rm, copyFile, link, writeFile } from 'node:fs/promises';
+import path from 'node:path';
+import { checkGamePath } from './game-folders';
+import { rm, copyFile, link, mkdir, writeFile } from 'node:fs/promises';
 import { randomUUID } from 'node:crypto';
 import type {
   Api,
@@ -7,6 +9,7 @@ import type {
   ContentProject,
   ContentVersion,
   ContentKind,
+  Instance,
   ModAuditEntry,
 } from '../../shared/types';
 import type { Store } from './store';
@@ -103,23 +106,26 @@ export class Catalog {
       throw new Error('内容类型或项目身份不匹配');
     return this.cfProject(p, ref);
   }
+  private filterInstance(v: { kind: ContentKind; id?: string }) {
+    if (v.kind === 'modpack') return;
+    if (!v.id) throw new Error('请选择游戏实例');
+    return this.store.instance(v.id);
+  }
   async search(v: Parameters<Api['catalogSearch']>[0]) {
-    const i = this.store.instance(v.id);
-    const query = catalogQuery(
-      v.query,
-      v.kind === 'mod' ? [i.loader, i.version, 'mod'] : [i.version],
-    );
+    const i = this.filterInstance(v);
+    const filters = !i ? [] : v.kind === 'mod' ? [i.loader, i.version, 'mod'] : [i.version];
+    const query = catalogQuery(v.query, filters);
     const page = await this.searchProvider({ ...v, query });
     if (page.total === 0 && query !== v.query) return this.searchProvider(v);
     return page;
   }
   private async searchProvider(v: Parameters<Api['catalogSearch']>[0]) {
-    const i = this.store.instance(v.id);
+    const i = this.filterInstance(v);
     if (v.source === 'modrinth') {
       const facets = [
         [`project_type:${v.kind}`],
-        [`versions:${i.version}`],
-        ...(v.kind === 'mod' && i.loader !== 'vanilla' ? [[`categories:${i.loader}`]] : []),
+        ...(i ? [[`versions:${i.version}`]] : []),
+        ...(i && v.kind === 'mod' && i.loader !== 'vanilla' ? [[`categories:${i.loader}`]] : []),
       ];
       const r = await this.net.json<any>(
         base +
@@ -144,16 +150,16 @@ export class Catalog {
     const q = new URLSearchParams({
       gameId: '432',
       classId: String(classes[v.kind]),
-      gameVersion: i.version,
       searchFilter: v.query,
       index: String(v.offset),
       pageSize: '20',
     });
+    if (i) q.set('gameVersion', i.version);
     if (v.sort !== 'relevance') {
       q.set('sortField', v.sort === 'downloads' ? '6' : '3');
       q.set('sortOrder', 'desc');
     }
-    if (v.kind === 'mod' && cfLoaders[i.loader])
+    if (i && v.kind === 'mod' && cfLoaders[i.loader])
       q.set('modLoaderType', String(cfLoaders[i.loader]));
     const r = await this.cf.api<any>('mods/search?' + q);
     return {
@@ -165,9 +171,11 @@ export class Catalog {
       total: Number(r.pagination.totalCount),
     };
   }
-  private compatible(v: MRVersion, id: string, kind: ContentKind) {
-    const i = this.store.instance(id);
-    return v.game_versions.includes(i.version) && (kind !== 'mod' || v.loaders.includes(i.loader));
+  private compatible(v: MRVersion, kind: ContentKind, i?: Instance) {
+    return (
+      !i ||
+      (v.game_versions.includes(i.version) && (kind !== 'mod' || v.loaders.includes(i.loader)))
+    );
   }
   private mrVersion(v: MRVersion): ContentVersion {
     const f = v.files.find((f) => f.primary) ?? v.files[0];
@@ -185,6 +193,7 @@ export class Catalog {
     };
   }
   private cfVersion(f: CFFile & { displayName?: string; releaseType?: number }): ContentVersion {
+    const isLoader = (value: string) => Object.hasOwn(cfLoaders, value.toLowerCase());
     return {
       id: String(f.id),
       name: f.displayName ?? f.fileName,
@@ -194,23 +203,26 @@ export class Catalog {
         'unknown',
       fileName: f.fileName,
       bytes: f.fileLength,
-      gameVersions: f.gameVersions,
-      loaders: [],
+      gameVersions: f.gameVersions.filter(
+        (v) => !isLoader(v) && !/^(java\s?\d|client$|server$|environment:)/i.test(v),
+      ),
+      loaders: f.gameVersions.filter(isLoader),
       dependencies: f.dependencies.filter((d) => d.relationType === 3).length,
       downloadable: !!f.downloadUrl,
     };
   }
-  async versions(v: ContentRef & { id: string; offset: number }) {
+  async versions(v: ContentRef & { id?: string; offset: number }) {
     await this.project(v);
-    const i = this.store.instance(v.id);
+    const i = this.filterInstance(v);
     if (v.source === 'modrinth') {
-      const q = new URLSearchParams({ game_versions: JSON.stringify([i.version]) });
-      if (v.kind === 'mod') q.set('loaders', JSON.stringify([i.loader]));
+      const q = new URLSearchParams();
+      if (i) q.set('game_versions', JSON.stringify([i.version]));
+      if (i && v.kind === 'mod') q.set('loaders', JSON.stringify([i.loader]));
       const all = await this.net.json<MRVersion[]>(
-        `${base}/project/${encodeURIComponent(v.projectId)}/version?${q}`,
+        `${base}/project/${encodeURIComponent(v.projectId)}/version${q.size ? '?' + q : ''}`,
       );
       const list = all
-        .filter((f) => this.compatible(f, v.id, v.kind))
+        .filter((f) => f.project_id === v.projectId && this.compatible(f, v.kind, i))
         .sort((a, b) => Date.parse(b.date_published) - Date.parse(a.date_published));
       return {
         items: list.slice(v.offset, v.offset + 20).map((f) => this.mrVersion(f)),
@@ -218,17 +230,21 @@ export class Catalog {
       };
     }
     const q = new URLSearchParams({
-      gameVersion: i.version,
       index: String(v.offset),
       pageSize: '20',
     });
-    if (v.kind === 'mod') q.set('modLoaderType', String(cfLoaders[i.loader]));
+    if (i) q.set('gameVersion', i.version);
+    if (i && v.kind === 'mod') q.set('modLoaderType', String(cfLoaders[i.loader]));
     const r = await this.cf.api<{
       data: CFFile[];
       pagination: { totalCount: number; resultCount: number };
     }>(`mods/${this.numeric(v.projectId)}/files?${q}`);
     return {
-      items: r.data.filter((f) => f.gameVersions.includes(i.version)).map((f) => this.cfVersion(f)),
+      items: r.data
+        .filter(
+          (f) => f.modId === Number(v.projectId) && (!i || f.gameVersions.includes(i.version)),
+        )
+        .map((f) => this.cfVersion(f)),
       more: v.offset + r.pagination.resultCount < r.pagination.totalCount,
     };
   }
@@ -268,6 +284,23 @@ export class Catalog {
     await safeExport(destination, (temporary) => writeFile(temporary, text, 'utf8'));
   }
   async install(v: ContentRef & { id: string; versionId: string }, ctx: Work) {
+    return this.transfer(v, ctx);
+  }
+  async previewPack(v: ContentRef & { id?: string; versionId: string }, ctx: Work) {
+    if (v.kind !== 'modpack') throw new Error('请选择整合包');
+    let preview: import('../../shared/pack').PackPreview | undefined;
+    await this.transfer(v, ctx, async (file) => {
+      preview = await this.packs.preview(file, true, ctx.signal);
+    });
+    if (!preview) throw new Error('整合包预览失败');
+    return preview;
+  }
+  private async transfer(
+    v: ContentRef & { id?: string; versionId: string },
+    ctx: Work,
+    preview?: (file: string) => Promise<void>,
+  ) {
+    const i = this.filterInstance(v);
     const project = await this.project(v);
     ctx.setTitle?.((v.kind === 'modpack' ? '下载 ' : '安装 ') + project.title);
     let file: { filename: string; url: string; size: number; hash: string; algorithm: string };
@@ -279,10 +312,10 @@ export class Catalog {
       if (
         version.id !== v.versionId ||
         version.project_id !== v.projectId ||
-        !this.compatible(version, v.id, v.kind)
+        !this.compatible(version, v.kind, i)
       )
         throw new Error('所选版本与项目或实例不匹配');
-      if (v.kind === 'mod') return this.mods.install(v.id, v.projectId, ctx, v.versionId);
+      if (v.kind === 'mod') return this.mods.install(i!.id, v.projectId, ctx, v.versionId);
       if (
         v.kind !== 'modpack' &&
         version.dependencies.some((d) => d.dependency_type === 'required')
@@ -301,11 +334,12 @@ export class Catalog {
       const f = await this.cf.file(this.numeric(v.projectId), this.numeric(v.versionId));
       if (
         f.modId !== Number(v.projectId) ||
-        !f.gameVersions.includes(this.store.instance(v.id).version)
+        f.id !== Number(v.versionId) ||
+        (i && !f.gameVersions.includes(i.version))
       )
         throw new Error('所选文件与项目或实例不匹配');
       if (v.kind === 'mod')
-        return this.cf.install(v.id, Number(v.projectId), ctx, Number(v.versionId));
+        return this.cf.install(i!.id, Number(v.projectId), ctx, Number(v.versionId));
       if (v.kind !== 'modpack' && f.dependencies.some((d) => d.relationType === 3))
         throw new Error('该资源有必需依赖，请先通过项目页面核对并手动导入');
       const hash = f.hashes.find((h) => h.algo === 1)?.value;
@@ -322,8 +356,15 @@ export class Catalog {
     if (!Number.isSafeInteger(file.size) || file.size < 1 || file.size > 2 * 1024 ** 3)
       throw new Error('资源大小超限');
     if (!/\.(zip|mrpack)$/i.test(file.filename)) throw new Error('资源文件格式不支持');
-    const stage = await this.resources.location(v.id, 'resourcepacks', '', true);
-    // Private staging lives in the instance, on the same volume as the destination.
+    // A pack preview can be opened before the first instance exists.
+    const stage =
+      v.kind === 'modpack'
+        ? path.join(this.store.root, 'cache', 'pack-previews')
+        : await this.resources.location(i!.id, 'resourcepacks', '', true);
+    if (v.kind === 'modpack') {
+      await checkGamePath(stage, true);
+      await mkdir(stage, { recursive: true });
+    }
     const temporary = inside(stage, `.kjmcl-${randomUUID()}.download`);
     try {
       ctx.progress(5, `下载 ${project.title}`);
@@ -336,11 +377,12 @@ export class Catalog {
       });
       ctx.signal.throwIfAborted();
       if (v.kind === 'modpack') {
-        await this.packs.import(temporary);
+        if (preview) await preview(temporary);
+        else await this.packs.import(temporary);
         return;
       }
       const kind = v.kind === 'shader' ? 'shaderpacks' : 'resourcepacks';
-      const dest = await this.resources.location(v.id, kind, file.filename, true);
+      const dest = await this.resources.location(i!.id, kind, file.filename, true);
       if (await exists(dest)) {
         if ((await hashFile(dest, file.algorithm)) === file.hash) {
           ctx.progress(100, '相同文件已安装');

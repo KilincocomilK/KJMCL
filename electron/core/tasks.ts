@@ -4,6 +4,9 @@ export interface Work {
   signal: AbortSignal;
   progress: (percent: number, detail?: string) => void;
   setTitle?: (title: string) => void;
+  setScope?: (scope: string) => void;
+  /** Finish an atomic commit once its cancellable preparation has succeeded. */
+  beginCommit?: () => void;
 }
 export function progressRange(ctx: Work, start: number, end: number): Work {
   return {
@@ -32,6 +35,7 @@ export function fileProgress(ctx: Work, sizes: (number | undefined)[], start: nu
 
 interface ActiveTask {
   control: AbortController;
+  committing?: boolean;
   result?: Promise<unknown>;
 }
 
@@ -93,6 +97,14 @@ export class Tasks {
       try {
         const value = await work({
           signal: control.signal,
+          beginCommit: () => {
+            control.signal.throwIfAborted();
+            active.committing = true;
+          },
+          setScope: (scope) => {
+            task.scope = scope;
+            this.changed();
+          },
           setTitle: (title) => {
             task.title = title;
             this.changed();
@@ -145,11 +157,12 @@ export class Tasks {
     this.changed();
   }
   cancel(id: string) {
-    this.controllers.get(id)?.control.abort(new Error('已取消'));
+    const active = this.controllers.get(id);
+    if (active && !active.committing) active.control.abort(new Error('已取消'));
   }
   async cancelAll() {
     const active = [...this.controllers.values()];
-    for (const task of active) task.control.abort();
+    for (const task of active) if (!task.committing) task.control.abort();
     await Promise.allSettled(active.map((task) => task.result));
   }
 }

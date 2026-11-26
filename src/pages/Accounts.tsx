@@ -1,6 +1,6 @@
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import { ArrowDown, ArrowUp, ArrowUpRight, Check, LoaderCircle, Plus, Trash2 } from 'lucide-react';
-import type { Snapshot, DeviceCode } from '../../shared/types';
+import type { Snapshot } from '../../shared/types';
 import { api } from '../api';
 import { Field } from '../components';
 import { ItemArt } from '../components/ItemArt';
@@ -9,6 +9,7 @@ import { type Run } from '../ui';
 import { SkinDialog } from '../dialogs/AdvancedDialogs';
 import type { Account } from '../../shared/types';
 import { ThirdPartyLogin } from './ThirdPartyLogin';
+import { errorText } from '../assistant/controls';
 export function AccountPage({
   state,
   run,
@@ -127,8 +128,9 @@ export function AccountSetup({
   onConfigured?: () => void;
 }) {
   const [name, setName] = useState('');
-  const [code, setCode] = useState<DeviceCode>();
-  const [busy, setBusy] = useState(false);
+  const [action, setAction] = useState<'' | 'offline' | 'client' | 'login' | 'cancel'>('');
+  const [requestError, setRequestError] = useState('');
+  const busy = !!action;
   const [draftClientId, setDraftClientId] = useState<string>();
   const clientId = draftClientId ?? state.settings.microsoftClientId;
   const clientChanged = clientId.trim() !== state.settings.microsoftClientId;
@@ -139,11 +141,27 @@ export function AccountSetup({
     onConfigured?.();
   };
   const currentAccount = state.accounts.find((account) => account.id === state.selectedAccountId);
-  const loginTask = state.tasks.find((task) => task.title === 'Microsoft 登录');
+  const loginTask = state.tasks.find((task) => task.scope === 'auth');
   const loggingIn = loginTask?.status === 'running';
-  useEffect(() => {
-    if (!loggingIn) setCode(undefined);
-  }, [loggingIn]);
+  const code = loggingIn ? state.microsoftLoginCode : undefined;
+  const failure = requestError || (loginTask?.status === 'failed' ? loginTask.detail : '');
+  const beginLogin = async () => {
+    if (busy || loggingIn) return;
+    setAction('login');
+    setRequestError('');
+    try {
+      await run(async () => {
+        try {
+          await saveClientId();
+          await api.beginLogin();
+        } catch (error) {
+          setRequestError(errorText(error));
+        }
+      });
+    } finally {
+      setAction('');
+    }
+  };
   return (
     <>
       {welcome && !currentAccount && (
@@ -159,7 +177,7 @@ export function AccountSetup({
           onSubmit={async (e) => {
             e.preventDefault();
             if (busy) return;
-            setBusy(true);
+            setAction('offline');
             try {
               const a = await run(() => api.addOffline(name));
               if (a) {
@@ -167,7 +185,7 @@ export function AccountSetup({
                 onConfigured?.();
               }
             } finally {
-              setBusy(false);
+              setAction('');
             }
           }}
         >
@@ -188,23 +206,24 @@ export function AccountSetup({
           </button>
         </form>
       </SettingGroup>
-      <SettingGroup title="Microsoft 账户" art="globe">
-        <details className="minor-details" open={!state.settings.microsoftClientId}>
+      <SettingGroup title="Microsoft 账户" art="globe" open={loginTask ? true : undefined}>
+        <details className="minor-details">
           <summary>应用客户端 ID</summary>
           <form
             onSubmit={async (e) => {
               e.preventDefault();
-              setBusy(true);
+              setAction('client');
               try {
                 await run(saveClientId, '客户端 ID 已保存');
               } finally {
-                setBusy(false);
+                setAction('');
               }
             }}
           >
-            <Field label="Microsoft Client ID" hint="使用已获 Minecraft 授权的应用客户端 ID。">
+            <Field label="Microsoft Client ID" hint="留空使用 KJMCL 内置应用。">
               <input
                 aria-label="Microsoft Client ID"
+                placeholder="KJMCL 默认应用"
                 value={clientId}
                 disabled={busy || loggingIn}
                 onChange={(e) => setDraftClientId(e.target.value)}
@@ -213,11 +232,11 @@ export function AccountSetup({
             {clientChanged && <button disabled={busy || loggingIn}>保存客户端 ID</button>}
           </form>
         </details>
-        {code || loggingIn ? (
+        {loggingIn ? (
           <div className="login-code">
             {code ? (
               <>
-                <small>在微软验证页面输入</small>
+                <small>在 Microsoft 登录页面输入此代码</small>
                 <strong>{code.userCode}</strong>
                 <button
                   className="primary"
@@ -228,34 +247,49 @@ export function AccountSetup({
                 </button>
               </>
             ) : (
-              <p>正在等待 Microsoft 授权</p>
+              <p role="status">{loginTask.detail}</p>
             )}
             <button
-              onClick={() => {
-                void run(() => api.cancelLogin());
-                setCode(undefined);
+              disabled={action === 'cancel'}
+              onClick={async () => {
+                setAction('cancel');
+                try {
+                  await run(() => api.cancelLogin());
+                } finally {
+                  setAction('');
+                }
               }}
             >
               取消登录
             </button>
           </div>
         ) : (
-          <button
-            className="primary"
-            disabled={busy || !clientId.trim()}
-            onClick={async () => {
-              setBusy(true);
-              const c = await run(async () => {
-                await saveClientId();
-                return api.beginLogin();
-              });
-              if (c) setCode(c);
-              setBusy(false);
-            }}
-          >
-            {busy && <LoaderCircle size={16} className="spin" />}登录 Microsoft
-            <ArrowUpRight size={16} />
-          </button>
+          <>
+            {action !== 'login' &&
+              (failure ? (
+                <p className="inline-error" role="alert">
+                  {failure}
+                </p>
+              ) : loginTask?.status === 'cancelled' ? (
+                <p className="inline-note" role="status">
+                  登录已取消
+                </p>
+              ) : loginTask?.status === 'completed' &&
+                state.accounts.some((a) => a.kind === 'microsoft') ? (
+                <p className="inline-note" role="status">
+                  Microsoft 登录成功
+                </p>
+              ) : null)}
+            <button className="primary" disabled={busy} onClick={() => void beginLogin()}>
+              {action === 'login' && <LoaderCircle size={16} className="spin" />}
+              {action === 'login'
+                ? '正在获取登录码…'
+                : failure || loginTask?.status === 'cancelled'
+                  ? '重新登录 Microsoft'
+                  : '登录 Microsoft'}
+              <ArrowUpRight size={16} />
+            </button>
+          </>
         )}
       </SettingGroup>
       <ThirdPartyLogin run={run} onConfigured={onConfigured} />

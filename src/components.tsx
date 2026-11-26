@@ -1,5 +1,6 @@
 import { useEffect, useRef, type ReactNode } from 'react';
 import { X } from 'lucide-react';
+import brandMark from '../resources/icons/KJMCL_icon_02.png';
 import { ItemArt, type ItemName } from './components/ItemArt';
 import { Select } from './Select';
 export function Modal({
@@ -146,14 +147,12 @@ export function Switch({
 }
 export function Brand({ small = false }: { small?: boolean }) {
   return (
-    <span className={'brand-mark ' + (small ? 'small' : '')}>
-      <svg viewBox="0 0 16 16" shapeRendering="crispEdges" aria-hidden="true">
-        <path
-          fill="currentColor"
-          d="M2 2h3v5h2V5h2V3h2V2h4v2h-2v2h-2v2H9v1h2v2h2v2h2v2h-4v-2H9v-2H7V9H5v6H2z"
-        />
-      </svg>
-    </span>
+    <img
+      className={'brand-mark' + (small ? ' small' : '')}
+      src={brandMark}
+      alt=""
+      draggable={false}
+    />
   );
 }
 import type { Snapshot } from '../shared/types';

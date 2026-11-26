@@ -2,6 +2,7 @@ import path from 'node:path';
 import { randomUUID } from 'node:crypto';
 import { open, readdir, rm } from 'node:fs/promises';
 import { Store } from './store';
+import { checkGamePath } from './game-folders';
 import { atomicJson, exists, json } from './files';
 import type { Diagnosis, LaunchSession, LogLine } from '../../shared/types';
 
@@ -118,6 +119,23 @@ export class Diagnostics {
     this.writes.set(id, next);
     await next;
   }
+  async latest(id?: string) {
+    if (!id) return;
+    const session = (await this.list(id))[0];
+    if (!session) return;
+    const { instanceId, startedAt, status, phase } = session;
+    const diagnosis = session.diagnoses[0];
+    const failure =
+      session.failure ??
+      (status === 'failed' && diagnosis
+        ? { reason: diagnosis.evidence || diagnosis.title, action: 'diagnostics' as const }
+        : undefined);
+    return { id: session.id, instanceId, startedAt, status, phase, failure };
+  }
+  runningPhase(id: string) {
+    const session = this.records.get(id)?.[0];
+    return session?.status === 'running' ? session.phase : undefined;
+  }
   async start(id: string) {
     const list = await this.list(id);
     const s: LaunchSession = {
@@ -132,14 +150,20 @@ export class Diagnostics {
     list.unshift(s);
     const removed = list.splice(12);
     const logs = path.join(this.store.dir(id), 'logs');
-    const names = await readdir(logs).catch(() => []);
-    for (const old of removed)
+    const names: string[] = await readdir(logs).catch(() => []);
+    for (const old of removed) {
+      if (/^[a-f0-9-]{36}$/.test(old.id) && names.includes(`kjmcl-world-${old.id}.json`)) {
+        const file = path.join(logs, `kjmcl-world-${old.id}.json`);
+        await checkGamePath(file);
+        await rm(file, { force: true });
+      }
       if (old.gcLog && /^kjmcl-gc-[a-f0-9-]+\.log$/.test(old.gcLog)) {
         for (const n of names.filter(
           (n) => n === old.gcLog || [0, 1, 2, 3, 4].some((k) => n === `${old.gcLog}.${k}`),
         ))
           await rm(path.join(logs, n), { force: true });
       }
+    }
     await this.save(id);
     return s;
   }
@@ -150,6 +174,20 @@ export class Diagnostics {
       tail.map((l) => l.text),
       s.status,
     );
+    if (s.status === 'failed' && !s.failure) {
+      const diagnosis = s.diagnoses[0];
+      const specific = diagnosis && diagnosis.title !== '未识别的异常退出';
+      const lastError = tail
+        .slice(0, -1)
+        .reverse()
+        .find((l) => l.level === 'error' || /(?:Exception|Error): /.test(l.text));
+      s.failure = {
+        reason: specific
+          ? diagnosis.title + ' · ' + diagnosis.evidence.slice(0, 350)
+          : (lastError?.text || tail.at(-1)?.text || s.phase).slice(0, 500),
+        action: 'diagnostics',
+      };
+    }
     if (s.gcLog) {
       const root = path.join(this.store.dir(s.instanceId), 'logs');
       const files = await readdir(root).catch(() => []);

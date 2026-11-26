@@ -1,4 +1,5 @@
 import path from 'node:path';
+import { createHash } from 'node:crypto';
 import { createReadStream, createWriteStream } from 'node:fs';
 import { lstat, readdir, mkdir } from 'node:fs/promises';
 import { Readable } from 'node:stream';
@@ -12,7 +13,7 @@ const maxBytes = 64 * 1024 ** 3;
 const maxEntries = 200_000;
 
 // World data is streamed one file at a time; memory does not grow with region-file size.
-export async function archiveWorld(source: string, destination: string, ctx: Work) {
+async function worldFiles(source: string, ctx: Work) {
   const files: { path: string; relative: string; size: number; mtime: Date }[] = [];
   let total = 0;
   const collect = async (directory: string, prefix = '') => {
@@ -35,6 +36,39 @@ export async function archiveWorld(source: string, destination: string, ctx: Wor
     }
   };
   await collect(source);
+  return { files, total };
+}
+
+/** Compare current contents with an existing backup, including nested region and player files. */
+export async function backupMatchesWorld(source: string, archive: string, ctx: Work) {
+  const { files } = await worldFiles(source, ctx);
+  const current = new Map(files.map((file) => [file.relative, file]));
+  const zip = await openPromise(archive, { strictFileNames: true });
+  try {
+    if (zip.entryCount !== current.size) return false;
+    for await (const entry of zip.eachEntry()) {
+      ctx.signal.throwIfAborted();
+      const file = current.get(entry.fileName);
+      if (!file || file.size !== entry.uncompressedSize) return false;
+      const saved = createHash('sha256'),
+        live = createHash('sha256');
+      for await (const chunk of await zip.openReadStreamPromise(entry)) {
+        ctx.signal.throwIfAborted();
+        saved.update(chunk);
+      }
+      for await (const chunk of createReadStream(file.path, { signal: ctx.signal }))
+        live.update(chunk);
+      if (!saved.digest().equals(live.digest())) return false;
+      current.delete(entry.fileName);
+    }
+    return current.size === 0;
+  } finally {
+    zip.close();
+  }
+}
+
+export async function archiveWorld(source: string, destination: string, ctx: Work) {
+  const { files, total } = await worldFiles(source, ctx);
   ctx.signal.throwIfAborted();
   const zip = new ZipFile(),
     output = zip.outputStream as Readable;

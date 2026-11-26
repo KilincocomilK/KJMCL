@@ -1,4 +1,5 @@
 import { VERSION } from '../../shared/version';
+import { microsoftClientId } from './microsoft-client';
 import path from 'node:path';
 import { spawn, type ChildProcess } from 'node:child_process';
 import { createWriteStream } from 'node:fs';
@@ -15,7 +16,18 @@ import type { LogLine, LaunchSession } from '../../shared/types';
 import { RecentGameLogs } from '../../shared/recent-logs';
 import { redact } from './log-redaction';
 import { gameLaunchArguments, launchAccount, prepareGameLaunch } from './launch-options';
+import { advanceLaunch, logMilestone, observeWorld } from './launch-evidence';
 export { redact } from './log-redaction';
+type Failure = NonNullable<LaunchSession['failure']>;
+class LaunchProblem extends Error {
+  constructor(
+    readonly action: Failure['action'],
+    message: string,
+    readonly accountId?: string,
+  ) {
+    super(message);
+  }
+}
 export class Launcher {
   performance: Performance;
   diagnostics: Diagnostics;
@@ -64,6 +76,12 @@ export class Launcher {
           text: redact(e instanceof Error ? e.message : String(e)),
         };
         record([line]);
+        if (!signal.aborted)
+          session.failure = {
+            reason: line.text.slice(0, 1000),
+            action: e instanceof LaunchProblem ? e.action : 'diagnostics',
+            accountId: e instanceof LaunchProblem ? e.accountId : undefined,
+          };
         await this.diagnostics.finish(session, this.logs(id));
         this.changed();
       }
@@ -83,7 +101,13 @@ export class Launcher {
       this.store.data.selectedAccountId,
       i.launchOptions,
     );
-    const prepared = await prepareGameLaunch(this.mc, id);
+    const prepared = await prepareGameLaunch(this.mc, id, session.id).catch(
+      (e: NodeJS.ErrnoException) => {
+        if (e.code === 'ENOENT')
+          throw new LaunchProblem('resources', '找不到游戏文件：' + (e.path ?? e.message));
+        throw e;
+      },
+    );
     const { version: v, options: launch } = prepared;
     if (i.localRuntime) {
       const version = await clientVersion(prepared.client, i.version);
@@ -95,20 +119,30 @@ export class Launcher {
     }
     const check = await this.performance.check(id, true, signal, prepared);
     const errors = check.issues.filter((x) => x.level === 'error');
-    if (errors.length) throw new Error(errors.map((x) => x.message).join('\n'));
+    if (errors.length)
+      throw new LaunchProblem(
+        errors.some((e) => e.code === 'files-missing') ? 'resources' : 'diagnostics',
+        errors.map((x) => x.message).join('\n'),
+      );
     const runtime = check.runtime!;
     session.runtime = runtime;
     session.memoryMb = check.memoryMb;
     session.collector = (i.performance ?? defaults).collector;
     session.phase = '准备日志与账户';
     await this.diagnostics.save(id);
-    const loggingFile = await this.mc.ensureLogging(id, v, signal);
+    const loggingFile = await this.mc.ensureLogging(id, v, signal).catch((e: Error) => {
+      throw new LaunchProblem('resources', '日志配置：' + e.message);
+    });
     const root = this.store.dir(id),
       assets = path.join(this.store.runtime(id), 'assets');
-    const token = await this.auth.token(account);
+    const token = await this.auth.token(account).catch((e: Error) => {
+      throw new LaunchProblem('account', e.message, account.id);
+    });
     const vars: Record<string, string> = {
       ...launch.variables,
-      natives_directory: await this.mc.prepareNatives(id, v),
+      natives_directory: await this.mc.prepareNatives(id, v).catch((e: Error) => {
+        throw new LaunchProblem('resources', '无法准备本地库：' + e.message);
+      }),
       launcher_name: 'KJMCL',
       launcher_version: VERSION,
       classpath: prepared.classpath.join(path.delimiter),
@@ -123,7 +157,8 @@ export class Launcher {
       auth_access_token: token,
       auth_session: token,
       auth_xuid: '',
-      clientid: this.store.data.settings.microsoftClientId,
+      clientid:
+        account.microsoftClientId ?? microsoftClientId(this.store.data.settings.microsoftClientId),
       user_type:
         account.kind === 'microsoft' ? 'msa' : account.kind === 'yggdrasil' ? 'mojang' : 'legacy',
       version_type: v.type ?? 'release',
@@ -170,6 +205,19 @@ export class Launcher {
     });
     this.processes.set(id, child);
     const started = Date.now();
+    const mark = (milestone: NonNullable<LaunchSession['milestone']>, time: number) => {
+      if (!advanceLaunch(session, milestone, time)) return;
+      if (milestone === 'world') {
+        this.store.instance(id).lastPlayed = time;
+        try {
+          this.store.save();
+        } catch {
+          output.write('error', '无法保存最近游玩时间');
+        }
+      }
+      void this.diagnostics.save(id).catch(() => output.write('error', '无法保存启动阶段'));
+      this.changed();
+    };
     const output = new GameOutput(
       child,
       createWriteStream(path.join(root, 'logs', 'kjmcl.log'), {
@@ -178,7 +226,14 @@ export class Launcher {
       }),
       id,
       token,
-      record,
+      (lines) => {
+        record(lines);
+        if (session.milestone === 'world') return;
+        for (const line of lines) {
+          const evidence = logMilestone(line.text, account.name);
+          if (evidence) mark(evidence, line.time);
+        }
+      },
     );
     this.outputs.set(id, output);
     this.stopped.delete(id);
@@ -188,12 +243,17 @@ export class Launcher {
     );
     for (const issue of check.issues) output.write('info', issue.message);
     let spawnError: Error | undefined;
+    const worldLog = 'logs/kjmcl-world-' + session.id + '.json';
+    const finishObservation = game.includes(worldLog)
+      ? observeWorld(path.join(root, worldLog), started, (time) => mark('world', time))
+      : undefined;
     child.once('error', (e) => {
       spawnError = e;
       output.write('error', e.message);
     });
     child.once('close', async (code, signal) => {
-      i.playTime += Date.now() - started;
+      await finishObservation?.();
+      if (this.spawned.has(id)) this.store.instance(id).playTime += Date.now() - started;
       try {
         this.store.save();
       } catch {
@@ -229,9 +289,9 @@ export class Launcher {
       child.once('error', reject);
     });
     if (!this.processes.has(id)) return;
-    i.lastPlayed = Date.now();
+    i.lastLaunchedAt = Date.now();
     session.status = 'running';
-    session.phase = '游戏进程运行中';
+    advanceLaunch(session, 'java', i.lastLaunchedAt);
     await this.diagnostics.save(id);
     this.store.save();
     this.changed();

@@ -91,7 +91,7 @@ function render(state: LightweightState) {
     ...state.games.map((game) => {
       const row = document.createElement('li');
       const name = document.createElement('span');
-      name.textContent = game.name;
+      name.textContent = game.phase ? game.name + ' · ' + game.phase : game.name;
       const stop = document.createElement('button');
       stop.textContent = '结束游戏';
       stop.onclick = () =>

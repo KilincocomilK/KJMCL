@@ -68,8 +68,10 @@ export async function copyTree(
   filter: (relative: string) => boolean = () => true,
   relative = '',
 ) {
-  if (!(await exists(source))) return;
-  const info = await lstat(source);
+  const info = await lstat(source).catch((error) => {
+    if (error.code !== 'ENOENT') throw error;
+  });
+  if (!info) return;
   if (info.isSymbolicLink()) throw new Error('不复制符号链接：' + relative);
   if (info.isDirectory()) {
     await mkdir(dest, { recursive: true });
@@ -78,10 +80,10 @@ export async function copyTree(
       const next = relative ? relative + '/' + d : d;
       if (filter(next)) await copyTree(path.join(source, d), path.join(dest, d), ctx, filter, next);
     }
-  } else {
+  } else if (info.isFile()) {
     await mkdir(path.dirname(dest), { recursive: true });
     await copyFile(source, dest);
-  }
+  } else throw new Error('不能复制非常规文件：' + source);
 }
 export class Instances {
   readonly folders: GameFolders;
@@ -152,7 +154,10 @@ export class Backups {
   async worlds(id: string) {
     const root = path.join(this.store.dir(id), 'saves');
     const result = [];
-    for (const d of await readdir(root, { withFileTypes: true }).catch(() => []))
+    for (const d of await readdir(root, { withFileTypes: true }).catch((error) => {
+      if (error.code === 'ENOENT') return [];
+      throw error;
+    }))
       if (d.isDirectory() && (await exists(path.join(root, d.name, 'level.dat'))))
         result.push({
           name: d.name,

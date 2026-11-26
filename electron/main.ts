@@ -1,4 +1,5 @@
 import { Instances, Backups, claimDirectory, assertOwned } from './core/instances';
+import { TrialUpdates } from './core/trial-updates';
 import { Vault } from './core/vault';
 import { Yggdrasil } from './core/yggdrasil';
 import { Skins } from './core/skins';
@@ -42,7 +43,7 @@ import os from 'node:os';
 import { mkdir, writeFile, copyFile } from 'node:fs/promises';
 import { randomUUID } from 'node:crypto';
 import { Store } from './core/store';
-import { Tasks } from './core/tasks';
+import { Tasks, type Work } from './core/tasks';
 import { LauncherUpdates } from './core/launcher-updates';
 import { Network } from './core/network';
 import { Minecraft } from './core/minecraft';
@@ -50,6 +51,7 @@ import { Java } from './core/java';
 import { configureWelcomeJava, welcomeJavaInfo } from './core/welcome-java';
 import { Auth } from './core/auth';
 import { Mods } from './core/mods';
+import { ModUpdates } from './core/mod-updates';
 import { Packs } from './core/packs';
 import { Launcher } from './core/launcher';
 import { VideoSettings } from './core/video-settings';
@@ -123,7 +125,11 @@ app
         window.isVisible() &&
         !window.isMinimized() &&
         window.isFocused(),
-      games: [...launcher.processes.keys()].map((id) => ({ id, name: store.instance(id).name })),
+      games: [...launcher.processes.keys()].map((id) => ({
+        id,
+        name: store.instance(id).name,
+        phase: launcher.diagnostics.runningPhase(id),
+      })),
       tasks: tasks.items.filter((task) => task.status === 'running').length,
       activity: host?.lightweight
         ? activities(tasks.items, launcherUpdates.state, Date.now() - noticeDuration)[0]
@@ -169,6 +175,7 @@ app
       ygg = new Yggdrasil(store, net, vault),
       skins = new Skins(store, net, auth, ygg),
       cf = new CurseForge(store, net, vault),
+      modUpdates = new ModUpdates(store, net, mods, cf),
       instances = new Instances(store),
       backups = new Backups(store),
       publishing = new Publishing(store, net, vault, cf);
@@ -198,9 +205,32 @@ app
       assertIdle(id);
       if (store.instance(id).status === 'installing') throw new Error('实例正在安装');
       await assertOwned(store, id);
+      for (const related of store.related(id)) {
+        if (await modUpdates.history.pending(related.id)) {
+          assertIdle(related.id);
+          await tasks.exclusive(related.id, async () => {
+            await assertOwned(store, related.id);
+            await modUpdates.history.recover(related.id);
+          });
+        }
+      }
       assertIdle(id);
     };
-    const create = (value: Parameters<Api['createInstance']>[0]) => {
+    // Recover interrupted file replacements before exposing instances to launches or other writers.
+    for (const instance of store.data.instances) {
+      try {
+        if (await modUpdates.history.pending(instance.id)) await assertOwned(store, instance.id);
+        await modUpdates.history.resume(instance.id);
+      } catch (error) {
+        // Keep the instance accessible. The writable guard retries the journal before any mutation.
+        await tasks
+          .run('恢复模组更新', instance.id, async () => {
+            throw error;
+          })
+          .catch(() => {});
+      }
+    }
+    const prepareInstance = (value: Parameters<Api['createInstance']>[0]): Instance => {
       if (tasks.busy('game-folders')) throw new Error('请等待游戏文件夹索引完成');
       const id = randomUUID();
       const gameDir = claimDirectory(
@@ -209,7 +239,7 @@ app
           path.join(store.data.settings.instancesDir || path.join(store.root, 'instances'), id),
         id,
       );
-      const i: Instance = {
+      return {
         ...value,
         id,
         gameDir,
@@ -223,18 +253,69 @@ app
         width: 1280,
         height: 720,
       };
-      store.data.instances.push(i);
-      store.data.selectedInstanceId = id;
-      delete store.data.selectedGameFolderId;
-      store.save();
-      changed();
-      return id;
     };
-    const packs = new Packs(store, mc, net, tasks, create, cf);
+    const registerInstance = (i: Instance) => {
+      const previous = store.data.selectedInstanceId;
+      const folder = store.data.selectedGameFolderId;
+      store.data.instances.push(i);
+      store.data.selectedInstanceId = i.id;
+      delete store.data.selectedGameFolderId;
+      try {
+        store.save();
+      } catch (error) {
+        store.data.instances = store.data.instances.filter((entry) => entry !== i);
+        store.data.selectedInstanceId = previous;
+        store.data.selectedGameFolderId = folder;
+        throw error;
+      }
+      changed();
+      return i.id;
+    };
+    const create = (value: Parameters<Api['createInstance']>[0]) =>
+      registerInstance(prepareInstance(value));
+    const trials = new TrialUpdates(store, backups);
+    const checkTrialSource = (id: string) => {
+      if (
+        tasks.busy('game-folders') ||
+        store
+          .related(id)
+          .some((i) => launcher.processes.has(i.id) || (i.id !== id && tasks.busy(i.id)))
+      )
+        throw new Error('请等待原实例停止后再试更');
+    };
+    const packs = new Packs(
+      store,
+      mc,
+      net,
+      tasks,
+      create,
+      cf,
+      (source, ctx) => {
+        checkTrialSource(source);
+        return trials.prepareTrial(source, ctx);
+      },
+      (source, target, ids, ctx, bundledWorlds) => {
+        checkTrialSource(source);
+        return trials.restoreTrial(source, target, ids, ctx, bundledWorlds);
+      },
+    );
+    const installInstance = (id: string, ctx: Work) => {
+      if (!store.instance(id).versionTrial) return packs.install(id, ctx);
+      return trials.installVersionCopy(
+        id,
+        ctx,
+        async (sourceId, copy) => {
+          await writable(sourceId);
+          return tasks.exclusive(sourceId, copy);
+        },
+        (work) => mc.install(id, work, 'installing'),
+      );
+    };
     const video = new VideoSettings(store);
     const resources = new Resources(store),
       terracotta = new Terracotta(store.root, net);
     const reden = new Reden(net, projectionWorkshop, resources);
+    const catalog = new Catalog(store, net, mods, cf, resources, packs);
     const saves = new SaveManager(
       store,
       app.isPackaged
@@ -389,7 +470,7 @@ app
         secrets: async () => [...auth.redactionValues(), ...(await privateValues(store.root))],
         store,
         tasks,
-        catalog: new Catalog(store, net, mods, cf, resources, packs),
+        catalog,
         audit: new ModAudit(store, resources),
         disk: new DiskUsage(store),
         crashes: new CrashReports(store, async () => [
@@ -526,8 +607,10 @@ app
         assistantPending: assistant.tools
           .changes()
           .filter((p) => p.status === 'pending' && p.source === 'mcp').length,
-        tasks: tasks.items,
         running: [...launcher.processes.keys()],
+        selectedLaunch: await launcher.diagnostics
+          .latest(store.data.selectedInstanceId)
+          .catch(() => undefined),
         dataPath: store.root,
         platform: process.platform,
         appVersion: app.getVersion(),
@@ -537,6 +620,8 @@ app
           modrinth: await vault.has('modrinth'),
         },
         storage: await storage.info(),
+        tasks: tasks.items,
+        ...(!host?.lightweight && auth.pendingCode ? { microsoftLoginCode: auth.pendingCode } : {}),
       }),
       lightweightState: async () => lightState(),
       backgroundImage: async () => appearance.image(),
@@ -626,11 +711,26 @@ app
         moveAccount(store, id, direction);
         changed();
       },
-      beginLogin: () => auth.begin(),
+      beginLogin: (accountId) => auth.begin(accountId),
       cancelLogin: async () => auth.cancel(),
       versions: () => mc.versions(),
       loaders: (v) => mc.loaders(v.version, v.loader),
       createInstance: async (value) => create(value),
+      trialVersion: async ({ sourceId, ...target }) => {
+        await writable(sourceId);
+        const source = store.instance(sourceId);
+        if (source.status !== 'ready') throw new Error('请先完成原实例安装');
+        const copy = prepareInstance(target);
+        copy.versionTrial = { version: 1, sourceId, phase: 'copy' };
+        copy.status = 'installing';
+        registerInstance(copy);
+        return tasks.start(
+          '创建试更副本 · ' + target.name,
+          copy.id,
+          (ctx) => installInstance(copy.id, ctx),
+          'download',
+        );
+      },
       updateInstance: async (value) => {
         await writable(value.id);
         if (
@@ -685,7 +785,7 @@ app
         return tasks.start(
           '安装 ' + store.instance(id).name,
           id,
-          (ctx) => mc.install(id, ctx),
+          (ctx) => installInstance(id, ctx),
           'download',
         );
       },
@@ -805,12 +905,12 @@ app
       },
       toggleMod: async (v) => {
         await writable(v.id);
-        await mods.toggle(v.id, v.name);
+        await tasks.exclusive(v.id, () => mods.toggle(v.id, v.name));
         changed();
       },
       deleteMod: async (v) => {
         await writable(v.id);
-        await mods.remove(v.id, v.name, (p) => shell.trashItem(p));
+        await tasks.exclusive(v.id, () => mods.remove(v.id, v.name, (p) => shell.trashItem(p)));
         changed();
       },
       searchMods: (v) => mods.search(v.id, v.query, v.offset),
@@ -823,16 +923,44 @@ app
           'download',
         );
       },
-      updateMods: async (id) => {
-        await writable(id);
-        return tasks.start('更新模组', id, (ctx) => mods.update(id, ctx), 'download');
+      previewModUpdates: async (id) => {
+        assertIdle(id);
+        return tasks.run('检查模组更新', id, async (ctx) => {
+          await assertOwned(store, id);
+          for (const related of store.related(id)) {
+            if (await modUpdates.history.pending(related.id))
+              throw new Error('上次模组更新尚待恢复，请查看活动通知中的恢复结果');
+          }
+          return modUpdates.preview(id, ctx);
+        });
       },
-      importPack: async () => {
+      applyModUpdates: async ({ id, token }) => {
+        await writable(id);
+        assertIdle(id);
+        return tasks.start(
+          '应用模组更新',
+          id,
+          (ctx) => modUpdates.apply(id, token, ctx),
+          'download',
+        );
+      },
+      lastModUpdate: (id) => modUpdates.history.last(id),
+      undoModUpdates: async (id) => {
+        await writable(id);
+        assertIdle(id);
+        await tasks.run('撤销模组更新', id, (ctx) => modUpdates.history.undo(id, ctx));
+      },
+      previewPack: async () => {
         const r = await dialog.showOpenDialog(window!, {
           properties: ['openFile'],
           filters: [{ name: '整合包', extensions: ['mrpack', 'zip'] }],
         });
-        return r.canceled ? null : packs.import(r.filePaths[0]);
+        return r.canceled ? null : packs.preview(r.filePaths[0]);
+      },
+      confirmPack: (value) => packs.confirm(value),
+      discardPack: (token) => packs.discard(token),
+      previewOnlinePack: async (value) => {
+        return tasks.run('预览整合包', 'pack-preview', (ctx) => catalog.previewPack(value, ctx));
       },
       exportPack: async (id) => {
         await writable(id);

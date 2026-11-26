@@ -50,6 +50,7 @@ jobs:
           node scripts/resource-desktop-smoke.mjs
           node scripts/save-desktop-smoke.mjs
           node scripts/library-desktop-smoke.mjs
+          node scripts/upgrade-desktop-smoke.mjs
           node scripts/lightweight-desktop-smoke.mjs
           node scripts/folders-desktop-smoke.mjs
           node scripts/mod-resources-desktop-smoke.mjs

@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { packInstallSchema, confirmPackSchema, packContentSourceSchema } from './pack';
 import { welcomeSections } from './types';
 import { javaGuide } from './java';
 const javaMajor = z
@@ -149,6 +150,7 @@ export const instanceSchema = z.object({
   status: z.enum(['empty', 'installing', 'ready', 'error']),
   createdAt: z.number(),
   lastPlayed: z.number().optional(),
+  lastLaunchedAt: z.number().optional(),
   playTime: z.number(),
   memoryMb: z.number().int().min(512).max(65536),
   javaPath: z.string().max(4096),
@@ -158,6 +160,31 @@ export const instanceSchema = z.object({
   error: z.string().optional(),
   gameDir: directory.optional(),
   localRuntime: z.boolean().optional(),
+  packInstall: packInstallSchema.optional(),
+  packContentSource: packContentSourceSchema.optional(),
+  versionTrial: z
+    .union([
+      z
+        .object({ version: z.literal(1), sourceId: id, phase: z.enum(['copy', 'install']) })
+        .strict(),
+      z
+        .object({
+          version: z.literal(1),
+          sourceId: id,
+          phase: z.literal('commit'),
+          entries: z
+            .array(
+              z
+                .string()
+                .min(1)
+                .max(1000)
+                .regex(/^[^\\/:*?"<>|\x00-\x1f]+$/),
+            )
+            .max(40032),
+        })
+        .strict(),
+    ])
+    .optional(),
   external: z.object({ folderId: id, versionId: fileName, layout: gameLayoutSchema }).optional(),
   performance: z
     .object({
@@ -289,14 +316,23 @@ export const schemas = {
   updateAppearance: appearanceControlsSchema,
   setSidebarOrder: sidebarOrderSchema,
   organizeInstance: z.object({ id, organization: organizationSchema }),
-  catalogSearch: contentRefSchema.omit({ projectId: true }).extend({
+  catalogSearch: contentRefSchema
+    .omit({ projectId: true })
+    .extend({
+      id: id.optional(),
+      query: z.string().max(120),
+      offset: z.number().int().min(0).max(10000),
+      sort: z.enum(['relevance', 'downloads', 'updated']),
+    })
+    .refine((v) => v.kind === 'modpack' || !!v.id),
+  catalogVersions: contentRefSchema
+    .extend({ id: id.optional(), offset: z.number().int().min(0).max(10000) })
+    .refine((v) => v.kind === 'modpack' || !!v.id),
+  installContent: contentRefSchema.extend({
+    kind: z.enum(['mod', 'resourcepack', 'shader']),
     id,
-    query: z.string().max(120),
-    offset: z.number().int().min(0).max(10000),
-    sort: z.enum(['relevance', 'downloads', 'updated']),
+    versionId: id,
   }),
-  catalogVersions: contentRefSchema.extend({ id, offset: z.number().int().min(0).max(10000) }),
-  installContent: contentRefSchema.extend({ id, versionId: id }),
   saveFavorite: contentRefSchema.extend({ group: z.string().trim().max(40) }),
   removeFavorite: contentRefSchema,
   auditMods: id,
@@ -448,7 +484,7 @@ export const schemas = {
   }),
   addOffline: z.string().regex(/^[a-zA-Z0-9_]{3,16}$/),
   removeAccount: id,
-  beginLogin: none,
+  beginLogin: id.optional(),
   cancelLogin: none,
   versions: none,
   loaders: z.object({ version: id, loader }),
@@ -460,6 +496,15 @@ export const schemas = {
     gameDir: directory.optional(),
   }),
   updateInstance: instanceSchema,
+  trialVersion: z
+    .object({
+      sourceId: id,
+      name: z.string().trim().min(1).max(80),
+      version: id,
+      loader,
+      loaderVersion: id.optional(),
+    })
+    .strict(),
   deleteInstance: id,
   install: id,
   launch: id,
@@ -487,8 +532,18 @@ export const schemas = {
     offset: z.number().int().min(0).max(10000),
   }),
   installMod: z.object({ id, projectId: id }),
-  updateMods: id,
-  importPack: none,
+  previewModUpdates: id,
+  applyModUpdates: z.object({ id, token: z.uuid() }).strict(),
+  lastModUpdate: id,
+  undoModUpdates: id,
+  previewPack: none,
+  previewOnlinePack: contentRefSchema.extend({
+    kind: z.literal('modpack'),
+    id: id.optional(),
+    versionId: id,
+  }),
+  confirmPack: confirmPackSchema,
+  discardPack: z.uuid(),
   exportPack: id,
   pickDirectory: none,
   cloneInstance: z.object({
@@ -541,7 +596,6 @@ export const schemas = {
     offset: z.number().int().min(0).max(9980),
   }),
   installCurseForge: z.object({ id, projectId: z.number().int().positive() }),
-  updateCurseForge: id,
   preparePack: z.object({
     id,
     format: z.enum(['mrpack', 'curseforge']),

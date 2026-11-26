@@ -89,7 +89,9 @@ try {
 
   const rail = page.locator('.sidebar');
   await expect(rail.locator('.brand')).toHaveText('');
-  await expect(rail.locator('.brand svg')).toBeVisible();
+  const mark = rail.locator('.brand img.brand-mark');
+  await expect(mark).toBeVisible();
+  await expect(mark).toHaveJSProperty('naturalWidth', 32);
   const buttons = rail.getByRole('button');
   await expect(buttons).toHaveCount(11);
   expect(

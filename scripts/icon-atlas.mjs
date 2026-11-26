@@ -23,6 +23,7 @@ const root = fileURLToPath(new URL('../', import.meta.url));
 const text = (file) => readFile(path.join(root, file), 'utf8');
 const output = path.join(root, 'docs/icon-atlas.html');
 const pixelFile = 'src/components/ItemArt.tsx';
+const brandFile = 'resources/icons/KJMCL_icon_02.png';
 const groupOrder = ['像素物品', '品牌标识', '操作图标', '地图标记', '界面符号'];
 const labelFor = (file) => pageNames[path.parse(file).name] ?? path.parse(file).name;
 const sort = (a, b) => (a < b ? -1 : a > b ? 1 : 0);
@@ -238,21 +239,20 @@ export async function catalogue() {
             (p) => p.type === 'FunctionDeclaration' || p.type === 'VariableDeclarator',
           )?.id?.name;
           if (!owner) throw Error('请为内联 SVG 登记稳定名称 ' + file);
-          const brand = owner === 'Brand';
           const key = 'inline/' + file.replace(/^src\//, '').replace(/\.[^.]+$/, '') + '/' + owner;
           const el = jsxArt(n);
           const graphic = renderToStaticMarkup(
             createElement('svg', {
               ...el.props,
               xmlns: 'http://www.w3.org/2000/svg',
-              color: brand ? '#ffa153' : '#e8e6d9',
+              color: '#e8e6d9',
             }),
           );
           const item = add(
             key,
             groupOrder[1],
-            brand ? '像素 K 标记' : owner,
-            brand ? '标识侧栏、主窗口和启动器信息页。' : '用于' + labelFor(file) + '。',
+            owner,
+            '用于' + labelFor(file) + '。',
             el.props.viewBox?.split(' ').slice(2).join(' × ') ?? 'SVG',
             svgUrl(graphic),
           );
@@ -283,8 +283,6 @@ export async function catalogue() {
       }
     });
   }
-  const brand = [...items.values()].find((i) => i.id.endsWith('/Brand'));
-  for (const file of brandUsers.keys()) note(brand, file);
   for (const file of (await readdir(root)).filter((f) => f.endsWith('.html')).sort()) {
     for (const m of (await text(file)).matchAll(
       /<button\b([^>]*)>\s*([\p{P}\p{S}]{1,4})\s*<\/button\s*>/gu,
@@ -296,7 +294,12 @@ export async function catalogue() {
     if (!(await text(file)).includes(anchor)) throw Error('请更新绘制标记来源 ' + key);
     note(add('mark/' + key, group, title, purpose, '绘制标记', svgUrl(svg(body))), file);
   }
-  const artFiles = [...sources, ...(await filesUnder('build')), ...(await filesUnder('public'))];
+  const artFiles = [
+    ...sources,
+    ...(await filesUnder('build')),
+    ...(await filesUnder('public')),
+    brandFile,
+  ];
   const mimes = {
     svg: 'image/svg+xml',
     png: 'image/png',
@@ -312,13 +315,14 @@ export async function catalogue() {
     const mime = mimes[path.extname(file).slice(1).toLowerCase()];
     if (!mime || assetLabels[file] === null) continue;
     const app = file === 'build/icon.png';
+    const brand = file === brandFile;
     const data = await readFile(path.join(root, file));
     const grid =
       mime === 'image/png'
         ? data.readUInt32BE(16) + ' × ' + data.readUInt32BE(20)
         : path.extname(file).slice(1).toUpperCase();
     const item = add(
-      app ? 'brand/application' : 'asset/' + file,
+      app ? 'brand/application' : brand ? 'inline/components/Brand' : 'asset/' + file,
       ...(assetLabels[file] ?? ['界面符号', path.parse(file).name, '项目图像资源。']),
       grid,
       'data:' + mime + ';base64,' + data.toString('base64'),
@@ -330,13 +334,18 @@ export async function catalogue() {
     for (const ref of app
       ? [
           file,
+          'resources/icons/KJMCL_icon.png',
+          'build/installerHeader.bmp',
+          'build/installerSidebar.bmp',
           'build/icon.ico',
           'lightweight.html',
           'system-dialog.html',
           'electron/window-host.ts',
           'electron/system-dialog.ts',
         ]
-      : [file])
+      : brand
+        ? [file, 'src/components.tsx', ...brandUsers.keys()]
+        : [file])
       note(item, ref);
   }
   const result = [...items.values()].map(({ uses, ...item }) => ({
@@ -439,7 +448,7 @@ if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.me
           .catch((e) => console.error(e.message));
       }, 220);
     };
-    for (const dir of ['src', 'public', 'build', 'tools/icon-atlas'])
+    for (const dir of ['src', 'public', 'build', 'resources/icons', 'tools/icon-atlas'])
       watch(path.join(root, dir), { recursive: true }, schedule);
     watch(fileURLToPath(import.meta.url), schedule);
     watch(root, (_, name) => {

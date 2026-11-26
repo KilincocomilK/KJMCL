@@ -34,8 +34,15 @@ export interface Account {
   kind: 'offline' | 'microsoft' | 'yggdrasil';
   skin?: string;
   authServer?: string;
+  microsoftClientId?: string;
 }
+export type VersionTrial = { version: 1; sourceId: string } & (
+  { phase: 'copy' | 'install' } | { phase: 'commit'; entries: string[] }
+);
 export interface Instance {
+  versionTrial?: VersionTrial;
+  packContentSource?: import('./pack').PackContentSource;
+  packInstall?: import('./pack').PackInstall;
   id: string;
   name: string;
   version: string;
@@ -44,6 +51,7 @@ export interface Instance {
   status: 'empty' | 'installing' | 'ready' | 'error';
   createdAt: number;
   lastPlayed?: number;
+  lastLaunchedAt?: number;
   playTime: number;
   memoryMb: number;
   javaPath: string;
@@ -180,6 +188,10 @@ export interface LaunchSession {
   endedAt?: number;
   status: 'preparing' | 'running' | 'exited' | 'failed' | 'stopped' | 'interrupted';
   phase: string;
+  /** Highest milestone actually observed in this session. Absent on legacy records. */
+  milestone?: 'java' | 'loading' | 'world';
+  worldEnteredAt?: number;
+  failure?: { reason: string; action: 'account' | 'resources' | 'diagnostics'; accountId?: string };
   runtime?: JavaRuntime;
   memoryMb?: number;
   collector?: PerformanceSettings['collector'];
@@ -255,6 +267,24 @@ export interface JavaRuntime {
   vendor?: string;
   vm?: string;
 }
+export interface ModUpdateItem {
+  source: 'modrinth' | 'curseforge';
+  projectId: string;
+  previousFile?: string;
+  previousVersion?: string;
+  file: string;
+  version: string;
+  size: number;
+  disabled: boolean;
+}
+export interface ModUpdatePreview {
+  token: string;
+  items: ModUpdateItem[];
+}
+export interface ModUpdateReceipt {
+  updatedAt: number;
+  count: number;
+}
 export interface ModFile {
   name: string;
   enabled: boolean;
@@ -280,6 +310,12 @@ export interface VersionSummary {
   sha1?: string;
 }
 export interface Snapshot {
+  selectedLaunch?: Pick<
+    LaunchSession,
+    'id' | 'instanceId' | 'startedAt' | 'status' | 'phase' | 'failure'
+  >;
+  /** Public user code for the active Microsoft authorization, held in memory only. */
+  microsoftLoginCode?: DeviceCode;
   welcome?: WelcomeProgress;
   welcomeConfigured?: WelcomeSection[];
   sidebarOrder?: SidebarEntry[];
@@ -361,7 +397,7 @@ export interface LogLine {
 export interface LightweightState {
   active: boolean;
   visible: boolean;
-  games: { id: string; name: string }[];
+  games: { id: string; name: string; phase?: string }[];
   tasks: number;
   activity?: LauncherActivity;
 }
@@ -538,7 +574,7 @@ export interface Api extends AssistantApi {
   launchChoices(id: string): Promise<LaunchChoices>;
   organizeInstance(value: { id: string; organization: InstanceOrganization }): Promise<void>;
   catalogSearch(value: {
-    id: string;
+    id?: string;
     source: ContentSource;
     kind: ContentKind;
     query: string;
@@ -546,9 +582,11 @@ export interface Api extends AssistantApi {
     sort: 'relevance' | 'downloads' | 'updated';
   }): Promise<{ items: ContentProject[]; total: number }>;
   catalogVersions(
-    value: ContentRef & { id: string; offset: number },
+    value: ContentRef & { id?: string; offset: number },
   ): Promise<{ items: ContentVersion[]; more: boolean }>;
-  installContent(value: ContentRef & { id: string; versionId: string }): Promise<string>;
+  installContent(
+    value: ContentRef & { kind: Exclude<ContentKind, 'modpack'>; id: string; versionId: string },
+  ): Promise<string>;
   saveFavorite(value: ContentRef & { group: string }): Promise<void>;
   removeFavorite(value: ContentRef): Promise<void>;
   auditMods(id: string): Promise<ModAuditEntry[]>;
@@ -640,7 +678,7 @@ export interface Api extends AssistantApi {
   select(value: { accountId?: string; instanceId?: string; folderId?: string }): Promise<void>;
   addOffline(name: string): Promise<Account>;
   removeAccount(id: string): Promise<void>;
-  beginLogin(): Promise<DeviceCode>;
+  beginLogin(accountId?: string): Promise<DeviceCode>;
   cancelLogin(): Promise<void>;
   versions(): Promise<VersionSummary[]>;
   loaders(value: { version: string; loader: Loader }): Promise<string[]>;
@@ -650,6 +688,13 @@ export interface Api extends AssistantApi {
     loader: Loader;
     loaderVersion?: string;
     gameDir?: string;
+  }): Promise<string>;
+  trialVersion(value: {
+    sourceId: string;
+    name: string;
+    version: string;
+    loader: Loader;
+    loaderVersion?: string;
   }): Promise<string>;
   updateInstance(value: Instance): Promise<void>;
   deleteInstance(id: string): Promise<void>;
@@ -679,8 +724,16 @@ export interface Api extends AssistantApi {
     offset: number;
   }): Promise<{ hits: ModProject[]; total_hits: number }>;
   installMod(value: { id: string; projectId: string }): Promise<string>;
-  updateMods(id: string): Promise<string>;
-  importPack(): Promise<string | null>;
+  previewModUpdates(id: string): Promise<ModUpdatePreview>;
+  applyModUpdates(value: { id: string; token: string }): Promise<string>;
+  lastModUpdate(id: string): Promise<ModUpdateReceipt | null>;
+  undoModUpdates(id: string): Promise<void>;
+  previewPack(): Promise<import('./pack').PackPreview | null>;
+  previewOnlinePack(
+    value: ContentRef & { kind: 'modpack'; id?: string; versionId: string },
+  ): Promise<import('./pack').PackPreview>;
+  confirmPack(value: import('./pack').ConfirmPack): Promise<string>;
+  discardPack(token: string): Promise<void>;
   exportPack(id: string): Promise<void>;
   pickDirectory(): Promise<string | null>;
   cloneInstance(value: {
@@ -725,7 +778,6 @@ export interface Api extends AssistantApi {
     offset: number;
   }): Promise<{ hits: ModProject[]; total_hits: number }>;
   installCurseForge(value: { id: string; projectId: number }): Promise<string>;
-  updateCurseForge(id: string): Promise<string>;
   preparePack(value: PackOptions): Promise<PackReview | null>;
   publishPack(value: {
     ticket: string;

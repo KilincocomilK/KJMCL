@@ -6,9 +6,9 @@ import { Store } from './store';
 import { Network } from './network';
 import { json, atomicJson, inside, exists, hashFile } from './files';
 import type { ModFile, ModProject } from '../../shared/types';
-import { progressRange, type Work } from './tasks';
+import type { Work } from './tasks';
 import type { CFLock } from './curseforge';
-interface LockEntry {
+export interface LockEntry {
   projectId: string;
   versionId: string;
   file: string;
@@ -127,24 +127,44 @@ export class Mods {
     if (!list.length) throw new Error(`没有兼容版本：${project}`);
     return list[0];
   }
-  async install(id: string, project: string, ctx: Work, versionId?: string) {
+  async resolve(
+    id: string,
+    roots: { project: string; versionId?: string }[],
+    ctx: Work,
+    old: LockEntry[],
+    updateAll = false,
+  ) {
     const instance = this.store.instance(id);
-    const old = await this.lock(id);
     const resolved = new Map<string, RemoteVersion>();
+    const rootVersions = new Map<string, RemoteVersion>();
+    if (updateAll)
+      for (const { project } of roots) {
+        ctx.signal.throwIfAborted();
+        const version = await this.compatible(id, project, ctx.signal);
+        if (version.project_id !== project) throw new Error('模组版本不属于指定项目');
+        rootVersions.set(project, version);
+      }
     const visit = async (projectId?: string, versionId?: string) => {
+      const root = projectId ? rootVersions.get(projectId) : undefined;
+      if (root && versionId && root.id !== versionId) throw new Error('模组依赖版本冲突');
       ctx.signal.throwIfAborted();
-      if (resolved.size > 100) throw new Error('依赖数量过多');
+      if (resolved.size >= roots.length + 100) throw new Error('依赖数量过多');
       if (projectId && resolved.has(projectId)) {
         if (versionId && resolved.get(projectId)!.id !== versionId)
           throw new Error('模组依赖版本冲突');
         return;
       }
-      const v = versionId
-        ? await this.net.json<RemoteVersion>(base + '/version/' + encodeURIComponent(versionId), {
-            signal: ctx.signal,
-          })
-        : await this.compatible(id, projectId!, ctx.signal);
-      if (projectId && v.project_id !== projectId) throw new Error('模组版本不属于指定项目');
+      const v =
+        root ??
+        (versionId
+          ? await this.net.json<RemoteVersion>(base + '/version/' + encodeURIComponent(versionId), {
+              signal: ctx.signal,
+            })
+          : await this.compatible(id, projectId!, ctx.signal));
+      if ((projectId && v.project_id !== projectId) || (versionId && v.id !== versionId))
+        throw new Error('模组版本不属于指定项目');
+      const target = rootVersions.get(v.project_id);
+      if (target && target.id !== v.id) throw new Error('模组依赖版本冲突');
       if (resolved.has(v.project_id)) {
         if (resolved.get(v.project_id)!.id !== v.id) throw new Error('模组依赖版本冲突');
         return;
@@ -159,16 +179,23 @@ export class Mods {
         }
       }
     };
-    await visit(project, versionId);
+    for (const root of roots) await visit(root.project, root.versionId);
     for (const v of resolved.values())
       for (const d of v.dependencies)
         if (
           d.dependency_type === 'incompatible' &&
           ((d.project_id &&
             (resolved.has(d.project_id) || old.some((l) => l.projectId === d.project_id))) ||
-            (d.version_id && [...resolved.values()].some((l) => l.id === d.version_id)))
+            (d.version_id &&
+              ([...resolved.values()].some((l) => l.id === d.version_id) ||
+                old.some((l) => !resolved.has(l.projectId) && l.versionId === d.version_id))))
         )
           throw new Error('检测到不兼容模组依赖');
+    return [...resolved.values()];
+  }
+  async install(id: string, project: string, ctx: Work, versionId?: string) {
+    const old = await this.lock(id);
+    const resolved = await this.resolve(id, [{ project, versionId }], ctx, old);
     const stage = path.join(this.store.dir(id), '.kjmcl-staging', randomUUID());
     await mkdir(stage, { recursive: true });
     const additions: LockEntry[] = [];
@@ -187,7 +214,7 @@ export class Mods {
           algorithm: 'sha512',
           size: f.size,
           onProgress: (fraction) =>
-            ctx.progress((80 * (n + fraction)) / resolved.size, `下载 ${f.filename}`),
+            ctx.progress((80 * (n + fraction)) / resolved.length, `下载 ${f.filename}`),
         });
         additions.push({
           projectId: v.project_id,
@@ -195,7 +222,7 @@ export class Mods {
           file: f.filename,
           sha512: f.hashes.sha512,
         });
-        ctx.progress((80 * ++n) / resolved.size, `下载 ${f.filename}`);
+        ctx.progress((80 * ++n) / resolved.length, `下载 ${f.filename}`);
       }
       ctx.signal.throwIfAborted();
       await mkdir(this.dir(id), { recursive: true });
@@ -246,21 +273,6 @@ export class Mods {
       }
     } finally {
       await rm(stage, { recursive: true, force: true });
-    }
-  }
-  async update(id: string, ctx: Work) {
-    const lock = await this.lock(id);
-    if (!lock.length) throw new Error('没有从 Modrinth 安装的模组');
-    let n = 0;
-    for (const entry of lock) {
-      const latest = await this.compatible(id, entry.projectId, ctx.signal);
-      if (latest.id !== entry.versionId)
-        await this.install(
-          id,
-          entry.projectId,
-          progressRange(ctx, (100 * n) / lock.length, (100 * (n + 1)) / lock.length),
-        );
-      ctx.progress((100 * ++n) / lock.length, '检查模组更新');
     }
   }
 }

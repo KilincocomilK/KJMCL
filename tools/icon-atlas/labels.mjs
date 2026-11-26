@@ -4,7 +4,12 @@ export const assetLabels = {
   'build/icon.png': [
     '品牌标识',
     '应用图标',
-    '桌面、任务栏、安装器和系统弹窗使用的 K 标志。Windows ICO 含多种尺寸。',
+    '桌面、任务栏、安装向导、轻量模式和系统弹窗使用的 KJMCL 手绘图标。Windows ICO 含多种尺寸。',
+  ],
+  'resources/icons/KJMCL_icon_02.png': [
+    '品牌标识',
+    '界面品牌标记',
+    '用于侧栏、欢迎页、主窗口和启动器信息页的 KJMCL 手绘小图标。',
   ],
   'build/icon.ico': null,
   'build/installerHeader.bmp': null,
@@ -59,7 +64,7 @@ export const actionLabels = {
   CornerUpLeft: ['撤销助手修改', '撤销已应用的助手配置调整。'],
   Cpu: ['本地模型接口', '标识通过 HTTP 连接的模型服务。'],
   Crosshair: ['坐标跳转', '将世界地图移至输入的坐标。'],
-  Download: ['下载与导出', '安装游戏及资源，导出文件，并标记下载中的任务。'],
+  Download: ['下载与导出', '安装游戏及资源、继续整合包安装、创建试更副本或导出文件。'],
   Eraser: ['擦除选区', '从世界地图的已选区块中刷除部分选区。'],
   Expand: ['进入全屏', '将种子地图或投影预览切换至全屏。'],
   ExternalLink: ['资源发布页', '从在线资源的搜索结果打开项目的原始发布页。'],

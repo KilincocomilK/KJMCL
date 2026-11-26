@@ -123,7 +123,10 @@ export function Favorites({
                   >
                     分组
                   </button>
-                  <button disabled={!state.selectedInstanceId} onClick={() => setSelected(f)}>
+                  <button
+                    disabled={f.kind !== 'modpack' && !state.selectedInstanceId}
+                    onClick={() => setSelected(f)}
+                  >
                     选择版本
                   </button>
                 </article>

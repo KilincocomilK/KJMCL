@@ -5,7 +5,8 @@ import type {
   ModFile,
   ResourceFile,
   ContentProject,
-  ContentSource,
+  ModUpdatePreview,
+  ModUpdateReceipt,
   LocalResourceCard,
 } from '../../shared/types';
 import { matchesSearch } from '../../shared/search';
@@ -40,7 +41,8 @@ export function ModResources({
   const id = state.selectedInstanceId!;
   const instance = state.instances.find((i) => i.id === id)!;
   const [mods, setMods] = useState<ModFile[]>([]);
-  const [source, setSource] = useState<ContentSource>('modrinth');
+  const [preview, setPreview] = useState<ModUpdatePreview | null>(null);
+  const [receipt, setReceipt] = useState<ModUpdateReceipt | null>(null);
   const [reading, setReading] = useState(true);
   const [audit, setAudit] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -69,6 +71,20 @@ export function ModResources({
       active = false;
     };
   }, [id, revision, terminalTasks, run]);
+  useEffect(() => {
+    setPreview(null);
+    setReceipt(null);
+  }, [id]);
+  useEffect(() => {
+    let active = true;
+    void run(async () => {
+      const last = await api.lastModUpdate(id);
+      if (active) setReceipt(last);
+    });
+    return () => {
+      active = false;
+    };
+  }, [id, revision, terminalTasks, run]);
   const mutate = async (work: () => Promise<unknown>) => {
     if (busy) return;
     setBusy(true);
@@ -82,7 +98,12 @@ export function ModResources({
   const runningTask = Object.values(pending).some((taskId) =>
     state.tasks.some((t) => t.id === taskId && t.status === 'running'),
   );
-  const locked = busy || runningTask || state.running.includes(id);
+  const updateTask = state.tasks.find((t) => t.id === pending.update && t.scope === id);
+  const locked =
+    busy ||
+    runningTask ||
+    state.running.includes(id) ||
+    state.tasks.some((t) => t.scope === id && t.status === 'running');
   const filesByName = new Map(files.map((file, rank) => [file.name, { file, rank }]));
   const visible = mods
     .filter((m) => {
@@ -121,7 +142,6 @@ export function ModResources({
         kind="mod"
         state={state}
         run={run}
-        onSourceChange={setSource}
         projectAction={(project) => {
           const installed = mods.some(
             (m) => m.projectId === project.projectId && (m.source ?? 'modrinth') === project.source,
@@ -170,13 +190,30 @@ export function ModResources({
             </span>
           </h2>
           <div className="row">
+            {receipt && (
+              <button
+                disabled={locked}
+                title={new Date(receipt.updatedAt).toLocaleString()}
+                onClick={() =>
+                  void mutate(async () => {
+                    await api.undoModUpdates(id);
+                    setReceipt(null);
+                    setPreview(null);
+                  })
+                }
+              >
+                撤销上次更新
+              </button>
+            )}
             <button
-              hidden={!mods.length}
-              disabled={locked || !mods.length}
+              hidden={!mods.some((m) => m.projectId)}
+              disabled={locked}
               onClick={() =>
-                void mutate(() =>
-                  source === 'modrinth' ? api.updateMods(id) : api.updateCurseForge(id),
-                )
+                void mutate(async () => {
+                  setPreview(null);
+                  const result = await api.previewModUpdates(id);
+                  if (live.current) setPreview(result);
+                })
               }
             >
               检查更新
@@ -190,6 +227,57 @@ export function ModResources({
             </button>
           </div>
         </div>
+        {preview && (
+          <section className="panel form-body" aria-label="模组更新预览">
+            <div className="resource-section-head">
+              <h3>
+                {preview.items.length ? `可更新 ${preview.items.length} 项` : '托管模组均为最新'}
+              </h3>
+              <button className="icon" aria-label="关闭更新预览" onClick={() => setPreview(null)}>
+                <X size={16} />
+              </button>
+            </div>
+            {preview.items.map((item) => (
+              <div className="mod-row" key={item.source + ':' + item.projectId}>
+                <div className="grow">
+                  <strong>{item.file}</strong>
+                  <small>
+                    {item.source === 'modrinth' ? 'Modrinth' : 'CurseForge'} ·{' '}
+                    {item.previousFile ? item.previousFile + ' → ' + item.file : '新增依赖'} ·{' '}
+                    {size(item.size)}
+                    {item.disabled && ' · 保持停用'}
+                  </small>
+                  <small>
+                    {item.previousVersion ? item.previousVersion + ' → ' : ''}
+                    {item.version}
+                  </small>
+                </div>
+              </div>
+            ))}
+            {preview.items.length > 0 && (
+              <div className="row">
+                <button
+                  className="primary"
+                  disabled={locked}
+                  onClick={() =>
+                    void mutate(async () => {
+                      const task = await api.applyModUpdates({ id, token: preview.token });
+                      setPreview(null);
+                      return task;
+                    })
+                  }
+                >
+                  应用全部更新
+                </button>
+              </div>
+            )}
+          </section>
+        )}
+        {updateTask && ['failed', 'cancelled', 'running'].includes(updateTask.status) && (
+          <p role="status" className={updateTask.status === 'failed' ? 'inline-error' : 'muted'}>
+            {updateTask.detail}
+          </p>
+        )}
         {search}
         {visible.length ? (
           <div className="mod-list panel">

@@ -1,5 +1,5 @@
 import { dialog, type BrowserWindow } from 'electron';
-import type { Api } from '../shared/types';
+import type { Api, ContentRef } from '../shared/types';
 import type { Store } from './core/store';
 import type { Tasks } from './core/tasks';
 import type { Catalog } from './core/catalog';
@@ -27,14 +27,10 @@ export function libraryHandlers(c: {
     },
     catalogSearch: (v) => c.catalog.search(v),
     catalogVersions: (v) => c.catalog.versions(v),
-    installContent: async (v) => {
+    installContent: async (v: ContentRef & { id: string; versionId: string }) => {
+      if (v.kind === 'modpack') throw new Error('请先预览整合包并选择安装内容');
       await c.writable(v.id);
-      return c.tasks.start(
-        v.kind === 'modpack' ? '下载并创建整合包实例' : '安装内容',
-        v.id,
-        (ctx) => c.catalog.install(v, ctx),
-        'download',
-      );
+      return c.tasks.start('安装内容', v.id, (ctx) => c.catalog.install(v, ctx), 'download');
     },
     saveFavorite: async (v) => {
       await c.catalog.favorite(v, v.group);

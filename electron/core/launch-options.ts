@@ -76,6 +76,7 @@ export async function prepareLaunchOptions(
   version: Version,
   root: string,
   input?: InstanceLaunchOptions,
+  sessionId?: string,
 ) {
   const options = launchOptionsSchema.parse(
     input ?? { fullscreen: false, target: { kind: 'menu' } },
@@ -83,15 +84,25 @@ export async function prepareLaunchOptions(
   const features: Record<string, boolean> = { has_custom_resolution: !options.fullscreen };
   const variables: Record<string, string> = {};
   const support = quickPlaySupport(version);
+  // Request the client's world-join record even when the player starts at the main menu.
+  const tracksWorld =
+    sessionId &&
+    selectArguments(version.arguments?.game ?? [], {
+      ...features,
+      has_quick_plays_support: true,
+    }).includes('--quickPlayPath');
+  if (tracksWorld || options.target.kind !== 'menu') {
+    features.has_quick_plays_support = true;
+    variables.quickPlayPath = tracksWorld
+      ? `logs/kjmcl-world-${sessionId}.json`
+      : 'logs/kjmcl-quick-play.json';
+    await checkGamePath(inside(root, variables.quickPlayPath), true);
+  }
   if (options.target.kind !== 'menu') {
     const world = options.target.kind === 'world';
     if (!(world ? support.world : support.server))
       throw new Error('此版本不支持快速进入，请在实例设置中选择主菜单');
-    features.has_quick_plays_support = true;
     features[world ? 'is_quick_play_singleplayer' : 'is_quick_play_multiplayer'] = true;
-    // Minecraft resolves this path relative to gameDir and creates the log itself.
-    variables.quickPlayPath = 'logs/kjmcl-quick-play.json';
-    await checkGamePath(path.join(root, variables.quickPlayPath), true);
     if (options.target.kind === 'world') {
       const file = inside(path.join(root, 'saves'), options.target.name + '/level.dat');
       await checkGamePath(file, true);
@@ -107,12 +118,13 @@ export async function prepareLaunchOptions(
 }
 
 // Use one resolved profile and one rule selection for preflight and the game process.
-export async function prepareGameLaunch(mc: Minecraft, id: string) {
+export async function prepareGameLaunch(mc: Minecraft, id: string, sessionId?: string) {
   const { version, client } = await mc.resolved(id);
   const options = await prepareLaunchOptions(
     version,
     mc.store.dir(id),
     mc.store.instance(id).launchOptions,
+    sessionId,
   );
   const jvm = selectArguments(
     version.arguments?.jvm?.length

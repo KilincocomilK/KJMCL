@@ -1,5 +1,5 @@
 import { it, expect, afterEach, vi } from 'vitest';
-import { mkdtemp, rm, mkdir, writeFile, readFile, readdir } from 'node:fs/promises';
+import { mkdtemp, rm, mkdir, writeFile, readFile, readdir, realpath } from 'node:fs/promises';
 import path from 'node:path';
 import os from 'node:os';
 import { createHash } from 'node:crypto';
@@ -8,6 +8,8 @@ import { Store } from '../electron/core/store';
 import { Network } from '../electron/core/network';
 import { Minecraft } from '../electron/core/minecraft';
 import { Mods } from '../electron/core/mods';
+import { ModUpdates } from '../electron/core/mod-updates';
+import { CurseForge } from '../electron/core/curseforge';
 import { Packs } from '../electron/core/packs';
 import { Tasks } from '../electron/core/tasks';
 import { exists, hashFile } from '../electron/core/files';
@@ -16,7 +18,7 @@ afterEach(async () => {
   for (const r of roots.splice(0)) await rm(r, { force: true, recursive: true });
 });
 async function fixture() {
-  const root = await mkdtemp(path.join(os.tmpdir(), 'kjmcl-services-'));
+  const root = await realpath(await mkdtemp(path.join(os.tmpdir(), 'kjmcl-services-')));
   roots.push(root);
   const store = new Store(root);
   store.data.instances.push({
@@ -238,7 +240,16 @@ it('resolves required Modrinth dependencies and preserves disabled state during 
   expect((await mods.list('test')).length).toBe(2);
   await mods.toggle('test', 'main-a1.jar');
   latest = 'a2';
-  await mods.update('test', ctx);
+  const updates = new ModUpdates(
+    store,
+    net,
+    mods,
+    new CurseForge(store, net, { get: async () => '' } as any),
+  );
+  const preview = await updates.preview('test', ctx);
+  expect(preview.items).toMatchObject([{ file: 'main-a2.jar', disabled: true }]);
+  expect(await exists(path.join(mods.dir('test'), 'main-a1.jar.disabled'))).toBe(true);
+  await updates.apply('test', preview.token, ctx);
   expect((await mods.list('test')).find((m) => m.projectId === 'main')).toMatchObject({
     name: 'main-a2.jar.disabled',
     enabled: false,

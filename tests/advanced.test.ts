@@ -421,7 +421,21 @@ it('imports a CurseForge manifest with exact dependency pins and exports a stand
       finishRuntime = resolve;
     });
   });
-  const install = vi.spyOn(cf, 'install').mockResolvedValue();
+  const install = vi.spyOn(cf, 'install');
+  vi.spyOn(cf, 'file').mockImplementation(async (project, file) => ({
+    id: file,
+    modId: project,
+    fileDate: '2026-01-01',
+    fileName: project + '.jar',
+    fileLength: 1,
+    hashes: [{ algo: 1, value: createHash('sha1').update(String(project)).digest('hex') }],
+    downloadUrl: 'https://fixture.test/' + project,
+    gameVersions: ['1.21.1', 'NeoForge'],
+    dependencies: [],
+  }));
+  vi.spyOn(net, 'response').mockImplementation(
+    async (url) => new Response(url.split('/').at(-1)) as any,
+  );
   const zip = new AdmZip();
   zip.addFile(
     'manifest.json',

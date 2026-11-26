@@ -1,6 +1,7 @@
 import { afterEach, expect, it, vi } from 'vitest';
 import {
   mkdtemp,
+  realpath,
   mkdir,
   writeFile,
   readFile,
@@ -30,7 +31,7 @@ afterEach(async () => {
   for (const root of roots.splice(0)) await rm(root, { recursive: true, force: true });
 });
 async function setup() {
-  const root = await mkdtemp(path.join(os.tmpdir(), 'kjmcl-library-test-'));
+  const root = await realpath(await mkdtemp(path.join(os.tmpdir(), 'kjmcl-library-test-')));
   roots.push(root);
   const store = new Store(path.join(root, 'data'));
   const gameDir = claimDirectory(store, path.join(store.root, 'instances', 'test'), 'test');
@@ -279,7 +280,7 @@ async function catalogFixture() {
   };
   const mods = { install: vi.fn() },
     cf = { api: vi.fn(), file: vi.fn(), install: vi.fn() },
-    packs = { import: vi.fn() };
+    packs = { import: vi.fn(), preview: vi.fn() };
   const c = new Catalog(s.store, net as any, mods as any, cf as any, s.resources, packs as any);
   return {
     ...s,
@@ -415,6 +416,7 @@ it('CurseForge resource discovery paginates and checks file ownership and downlo
 it('modpack catalog downloads route to the existing isolated importer and never replace current instance', async () => {
   const { c, net, packs, version, store, gameDir } = await catalogFixture();
   const old = structuredClone(store.instance('test'));
+  const before = await readdir(gameDir);
   net.json.mockImplementation(async (url: string) =>
     url.includes('/version/')
       ? version
@@ -433,5 +435,119 @@ it('modpack catalog downloads route to the existing isolated importer and never 
   );
   expect(packs.import).toHaveBeenCalledOnce();
   expect(store.instance('test')).toEqual(old);
-  expect(await readdir(path.join(gameDir, 'resourcepacks'))).toEqual([]);
+  expect(await readdir(gameDir)).toEqual(before);
+});
+
+it('browses and previews Modrinth packs across game and loader changes, including before the first instance', async () => {
+  const { c, net, packs, version, store } = await catalogFixture();
+  const pack = { source: 'modrinth', kind: 'modpack', projectId: 'projectA' } as const;
+  version.game_versions = ['1.20.1'];
+  version.loaders = ['forge'];
+  version.files[0].filename = 'candidate.mrpack';
+  const project = { id: 'projectA', title: 'Pack', project_type: 'modpack' };
+  net.json.mockImplementation(async (url: string): Promise<any> => {
+    if (url.includes('/search?')) return { hits: [], total_hits: 0 };
+    if (url.includes('/version/')) return version;
+    if (url.endsWith('/version')) return [version, { ...version, project_id: 'other' }];
+    return project;
+  });
+  packs.preview.mockResolvedValue({ token: 'preview-only', version: '1.20.1', loader: 'forge' });
+  const search = { ...pack, query: '', offset: 0, sort: 'downloads' as const };
+  await c.search({ ...search, id: 'test' });
+  const query = new URL(net.json.mock.calls[0][0]).searchParams;
+  expect(JSON.parse(query.get('facets')!)).toEqual([['project_type:modpack']]);
+  expect((await c.versions({ ...pack, id: 'test', offset: 0 })).items).toMatchObject([
+    { gameVersions: ['1.20.1'], loaders: ['forge'] },
+  ]);
+  store.data.instances = [];
+  const req = { ...pack, versionId: 'versionA' },
+    work = { signal: new AbortController().signal, progress: vi.fn() };
+  expect(await c.previewPack(req, work)).toMatchObject({ token: 'preview-only' });
+  expect(packs.import).not.toHaveBeenCalled();
+  expect(store.data.instances).toHaveLength(0);
+  expect((net.download.mock.calls[0] as any)[2]).toMatchObject({
+    algorithm: 'sha512',
+    hash: version.files[0].hashes.sha512,
+  });
+  version.project_id = 'other';
+  await expect(c.previewPack(req, work)).rejects.toThrow('不匹配');
+  version.project_id = 'projectA';
+  version.files[0].hashes.sha512 = '';
+  await expect(c.previewPack(req, work)).rejects.toThrow('SHA-512');
+});
+it('browses Minecraft CurseForge modpacks across versions and validates the pinned project, file identity and hash', async () => {
+  const { c, cf, packs, net, bytes } = await catalogFixture();
+  const ref = { source: 'curseforge', kind: 'modpack', projectId: '123' } as const;
+  const project = {
+    gameId: 432,
+    classId: 4471,
+    id: 123,
+    name: 'candidate',
+    slug: 'candidate',
+    authors: [],
+  };
+  const artifact = {
+    id: 20,
+    modId: 123,
+    fileName: 'pack.zip',
+    fileLength: bytes.length,
+    downloadUrl: 'https://fixture.invalid/pack.zip',
+    fileDate: '2026-10-01',
+    gameVersions: ['1.20.1', 'Forge'],
+    hashes: [{ algo: 1, value: createHash('sha1').update(bytes).digest('hex') }],
+    dependencies: [],
+  };
+  cf.api.mockImplementation(async (q: string) =>
+    q.includes('/files?')
+      ? {
+          data: [artifact, { ...artifact, modId: 99 }],
+          pagination: { resultCount: 2, totalCount: 2 },
+        }
+      : q.includes('/search?')
+        ? { data: [], pagination: { totalCount: 0 } }
+        : { data: project },
+  );
+  cf.file.mockResolvedValue(artifact);
+  packs.preview.mockResolvedValue({ token: 'preview' });
+  await c.search({ ...ref, query: '', offset: 0, sort: 'downloads', id: 'test' });
+  const query = new URL(cf.api.mock.calls[0][0], 'https://example.test').searchParams;
+  expect(Object.fromEntries(query)).toMatchObject({ gameId: '432', classId: '4471' });
+  expect(query.has('gameVersion')).toBe(false);
+  expect(query.has('modLoaderType')).toBe(false);
+  expect((await c.versions({ ...ref, id: 'test', offset: 0 })).items).toMatchObject([
+    { id: '20', gameVersions: ['1.20.1'], loaders: ['Forge'] },
+  ]);
+  expect(cf.api.mock.calls.at(-1)?.[0]).not.toContain('gameVersion=');
+  const req = { ...ref, id: 'test', versionId: '20' },
+    work = { signal: new AbortController().signal, progress: vi.fn() };
+  await c.previewPack(req, work);
+  expect((net.download.mock.calls[0] as any)[2]).toMatchObject({
+    algorithm: 'sha1',
+    hash: artifact.hashes[0].value,
+  });
+  expect(packs.import).not.toHaveBeenCalled();
+  cf.file.mockResolvedValueOnce({ ...artifact, id: 21 });
+  await expect(c.previewPack(req, work)).rejects.toThrow('不匹配');
+  cf.file.mockResolvedValueOnce({ ...artifact, modId: 999 });
+  await expect(c.previewPack(req, work)).rejects.toThrow('不匹配');
+  cf.file.mockResolvedValueOnce({ ...artifact, hashes: [] });
+  await expect(c.previewPack(req, work)).rejects.toThrow('SHA-1');
+  project.gameId = 7;
+  await expect(c.previewPack(req, work)).rejects.toThrow('不匹配');
+});
+it('requires explicit pack confirmation on the public bridge and keeps instance requirements for other content', () => {
+  const pack = {
+    source: 'modrinth',
+    kind: 'modpack',
+    projectId: 'projectA',
+    versionId: 'versionA',
+  };
+  expect(schemas.installContent.safeParse({ ...pack, id: 'test' }).success).toBe(false);
+  expect(schemas.previewOnlinePack.safeParse(pack).success).toBe(true);
+  expect(schemas.confirmPack.safeParse(pack).success).toBe(false);
+  expect('importPack' in schemas).toBe(false);
+  const search = { source: 'modrinth', offset: 0, sort: 'downloads', query: '' };
+  for (const kind of ['mod', 'shader', 'resourcepack'])
+    expect(schemas.catalogSearch.safeParse({ ...search, kind }).success).toBe(false);
+  expect(schemas.catalogSearch.safeParse({ ...search, kind: 'modpack' }).success).toBe(true);
 });

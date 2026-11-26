@@ -1,5 +1,5 @@
 import { _electron as electron, expect } from '@playwright/test';
-import { mkdtemp, writeFile, readFile, rm, mkdir } from 'node:fs/promises';
+import { mkdtemp, realpath, writeFile, readFile, rm, mkdir } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import { createHash } from 'node:crypto';
@@ -7,7 +7,7 @@ import { createRequire } from 'node:module';
 import AdmZip from 'adm-zip';
 import { firstVisibleWindow, selectLauncherOption } from './desktop-test-utils.mjs';
 const require = createRequire(import.meta.url);
-const root = await mkdtemp(path.join(os.tmpdir(), 'kjmcl-mod-resources-'));
+const root = await realpath(await mkdtemp(path.join(os.tmpdir(), 'kjmcl-mod-resources-')));
 const version = JSON.parse(await readFile(path.resolve('package.json'), 'utf8')).version;
 await writeFile(
   path.join(root, 'package.json'),
@@ -40,6 +40,7 @@ const fs = require('node:fs');
 const mock = new MockAgent(); mock.disableNetConnect(); setGlobalDispatcher(mock);
 const pool = mock.get('https://api.modrinth.com');
 globalThis.searchRequests = [];
+globalThis.modVersion = 'v1';
 const hit = {project_id:'example', title:'Example Mod', description:'Test fixture', author:'Fixture', downloads:42, slug:'example'};
 pool.intercept({path:p=>p.startsWith('/v2/search?') && new URL(p,'https://api.modrinth.com').searchParams.get('query')==='slow', method:'GET'})
  .reply(200,{hits:[{...hit,title:'Late Result'}],total_hits:1}).delay(1200);
@@ -48,9 +49,9 @@ pool.intercept({path:/^\\/v2\\/search\\?/, method:'GET'}).reply(200, ({path})=>{
  globalThis.searchRequests.push({query:p.get('query'), facets:JSON.parse(p.get('facets')), offset:p.get('offset'), sort:p.get('index')});
  return {hits:p.get('query')==='empty'?[]:[hit],total_hits:p.get('query')==='empty'?0:1};
 }).persist();
-pool.intercept({path:/^\\/v2\\/project\\/example\\/version\\?/,method:'GET'}).reply(200,[{
- id:'v1',project_id:'example',game_versions:['1.21.1'],loaders:['fabric'],dependencies:[],
- files:[{filename:'example.jar',url:'https://fixture.invalid/example.jar',hashes:{sha512:process.env.KJMCL_TEST_HASH},size:${bytes.length},primary:true}]
+pool.intercept({path:/^\\/v2\\/project\\/example\\/version\\?/,method:'GET'}).reply(200,()=>[{
+ id:globalThis.modVersion,project_id:'example',game_versions:['1.21.1'],loaders:['fabric'],dependencies:[],
+ files:[{filename:globalThis.modVersion === 'v1' ? 'example.jar' : 'example-v2.jar',url:'https://fixture.invalid/example.jar',hashes:{sha512:process.env.KJMCL_TEST_HASH},size:${bytes.length},primary:true}]
 }]).persist();
 mock.get('https://fixture.invalid').intercept({path:'/example.jar',method:'GET'})
  .reply(200,fs.readFileSync(process.env.KJMCL_TEST_JAR)).delay(700).persist();
@@ -86,17 +87,25 @@ try {
     await expect(page.getByText(name, { exact: true })).toHaveCount(0);
   await expect(page.getByRole('tab', { name: /^模组/ })).toHaveAttribute('aria-selected', 'true');
   const input = page.getByLabel('搜索在线模组', { exact: true });
-  const selector = await page.getByRole('combobox', { name: '选择实例' }).boundingBox();
-  const firstTab = await page.getByRole('tab', { name: /^模组/ }).boundingBox();
-  expect(selector.y + selector.height).toBeLessThan(firstTab.y);
+  await expect
+    .poll(async () => {
+      const selector = await page.getByRole('combobox', { name: '选择实例' }).boundingBox();
+      const firstTab = await page.getByRole('tab', { name: /^模组/ }).boundingBox();
+      return !!selector && !!firstTab && selector.y + selector.height < firstTab.y;
+    })
+    .toBe(true);
   await input.fill('钠 Sodium');
   await input.press('Enter');
   const results = page.getByRole('region', { name: '在线模组' });
   await expect(results.getByText('Example Mod', { exact: true })).toBeVisible();
   // The initial unfiltered listing can finish before the submitted search.
-  await expect.poll(() => app.evaluate(() =>
-    globalThis.searchRequests.find((request) => request.query === 'sodium')?.facets,
-  )).toEqual([['project_type:mod'], ['versions:1.21.1'], ['categories:fabric']]);
+  await expect
+    .poll(() =>
+      app.evaluate(
+        () => globalThis.searchRequests.find((request) => request.query === 'sodium')?.facets,
+      ),
+    )
+    .toEqual([['project_type:mod'], ['versions:1.21.1'], ['categories:fabric']]);
   await selectLauncherOption(page, '内容排序', 'downloads');
   await expect
     .poll(() => app.evaluate(() => globalThis.searchRequests.at(-1).sort))
@@ -154,6 +163,27 @@ try {
   await page.getByLabel('更多操作 example.jar.disabled', { exact: true }).click();
   await expect(page.getByRole('button', { name: '重命名', exact: true })).toHaveCount(0);
   await page.getByLabel('更多操作 example.jar.disabled', { exact: true }).click();
+  await app.evaluate(() => {
+    globalThis.modVersion = 'v2';
+  });
+  await selectLauncherOption(page, '内容来源', 'curseforge');
+  await installed.getByRole('button', { name: '检查更新', exact: true }).click();
+  const preview = installed.getByRole('region', { name: '模组更新预览' });
+  await expect(preview.getByText('example-v2.jar', { exact: true })).toBeVisible();
+  expect(await readFile(path.join(data, 'instances', id, 'mods', 'example.jar.disabled'))).toEqual(
+    bytes,
+  );
+  await preview.getByRole('button', { name: '应用全部更新' }).click();
+  await expect(installed.getByRole('button', { name: '撤销上次更新' })).toBeVisible();
+  expect(
+    await readFile(path.join(data, 'instances', id, 'mods', 'example-v2.jar.disabled')),
+  ).toEqual(bytes);
+  await installed.getByRole('button', { name: '撤销上次更新' }).click();
+  await expect(installed.getByRole('button', { name: '撤销上次更新' })).toHaveCount(0);
+  expect(await readFile(path.join(data, 'instances', id, 'mods', 'example.jar.disabled'))).toEqual(
+    bytes,
+  );
+  await selectLauncherOption(page, '内容来源', 'modrinth');
   await mkdir('.local', { recursive: true });
   await page.mouse.move(1, 1);
   await page.screenshot({ path: '.local/resources-v071.png' });

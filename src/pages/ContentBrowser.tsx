@@ -10,8 +10,10 @@ import type {
 } from '../../shared/types';
 import { api } from '../api';
 import { Modal } from '../components';
+import { PackPreviewDialog } from '../dialogs/PackPreviewDialog';
+import type { PackPreview } from '../../shared/pack';
 import { Select } from '../Select';
-import { size, type Run } from '../ui';
+import { size, loaderLabel, type Run } from '../ui';
 
 export const contentLabels: Record<ContentKind, string> = {
   mod: '模组',
@@ -64,8 +66,9 @@ export function ContentVersions({
   run: Run;
   onClose: () => void;
 }) {
-  const id = state.selectedInstanceId!;
+  const id = state.selectedInstanceId;
   const [page, setPage] = useState<{ items: ContentVersion[]; more: boolean }>();
+  const [pack, setPack] = useState<PackPreview>();
   const [offset, setOffset] = useState(0),
     [loading, setLoading] = useState(true),
     [busy, setBusy] = useState(false);
@@ -104,14 +107,19 @@ export function ContentVersions({
     };
   }, [id, project.source, project.kind, project.projectId, offset, revision, run]);
   const task = state.tasks.find((t) => t.id === taskId);
-  const locked = busy || task?.status === 'running' || state.running.includes(id);
+  const locked =
+    busy ||
+    task?.status === 'running' ||
+    (project.kind !== 'modpack' && (!id || state.running.includes(id)));
   const instance = state.instances.find((i) => i.id === id);
   const version = page?.items.find((v) => v.id === selected);
+  if (pack) return <PackPreviewDialog preview={pack} state={state} run={run} onClose={onClose} />;
   return (
     <Modal title={project.title} onClose={onClose}>
       <div className="row content-version-head">
         <span className="badge">
-          {instance?.version} · {contentLabels[project.kind]}
+          {project.kind !== 'modpack' && instance?.version + ' · '}
+          {contentLabels[project.kind]}
         </span>
         <button className="text-button" onClick={() => void run(() => api.external(project.url))}>
           项目页面 <ExternalLink size={14} />
@@ -126,7 +134,9 @@ export function ContentVersions({
           读取失败 <button onClick={() => setRevision((r) => r + 1)}>重试</button>
         </p>
       ) : !page?.items.length ? (
-        <p className="resource-empty">没有兼容版本</p>
+        <p className="resource-empty">
+          {project.kind === 'modpack' ? '暂无可选版本' : '没有兼容版本'}
+        </p>
       ) : (
         <>
           <label className="field content-dialog-field">
@@ -153,6 +163,15 @@ export function ContentVersions({
                       : v.channel === 'alpha'
                         ? '预览版'
                         : v.channel}
+                  {project.kind === 'modpack' &&
+                    v.gameVersions.length > 0 &&
+                    ' · Minecraft ' + v.gameVersions.join(' / ')}
+                  {project.kind === 'modpack' &&
+                    v.loaders.length > 0 &&
+                    ' · ' +
+                      v.loaders
+                        .map((l) => loaderLabel[l.toLowerCase() as keyof typeof loaderLabel] ?? l)
+                        .join(' / ')}
                   {!v.downloadable ? ' · 未开放下载' : ''}
                 </option>
               ))}
@@ -207,14 +226,33 @@ export function ContentVersions({
           onClick={async () => {
             if (!version || locked) return;
             setBusy(true);
-            const task = await run(() => api.installContent({ ...ref, id, versionId: version.id }));
+            if (project.kind === 'modpack') {
+              const plan = await run(() =>
+                api.previewOnlinePack({ ...ref, kind: 'modpack', versionId: version.id }),
+              );
+              if (live.current) {
+                setPack(plan);
+                setBusy(false);
+              } else if (plan) {
+                await run(() => api.discardPack(plan.token));
+              }
+              return;
+            }
+            if (!id) {
+              setBusy(false);
+              return;
+            }
+            const kind = project.kind;
+            const task = await run(() =>
+              api.installContent({ ...ref, kind, id, versionId: version.id }),
+            );
             if (live.current) {
               setTaskId(task);
               setBusy(false);
             }
           }}
         >
-          {project.kind === 'modpack' ? '创建新实例' : '安装'}
+          {project.kind === 'modpack' ? '预览整合包' : '安装'}
         </button>
       </div>
     </Modal>
@@ -234,7 +272,7 @@ export function ContentBrowser({
   onSourceChange?: (source: ContentSource) => void;
   projectAction?: (project: ContentProject) => ReactNode;
 }) {
-  const id = state.selectedInstanceId!;
+  const id = state.selectedInstanceId;
   const [query, setQuery] = useState(''),
     [source, setSource] = useState<ContentSource>('modrinth');
   const [sort, setSort] = useState<'relevance' | 'downloads' | 'updated'>('relevance');
@@ -342,7 +380,9 @@ export function ContentBrowser({
             </p>
           )}
           {!loading && result && !result.items.length && (
-            <p className="resource-empty">没有找到兼容内容</p>
+            <p className="resource-empty">
+              {kind === 'modpack' ? '没有找到整合包' : '没有找到兼容内容'}
+            </p>
           )}
           {result && (
             <div className="mod-list panel">
@@ -403,7 +443,7 @@ export function ContentBrowser({
       )}
       {project && (
         <ContentVersions
-          key={id + project.source + project.projectId}
+          key={(id ?? '') + project.source + project.projectId}
           project={project}
           state={state}
           run={run}

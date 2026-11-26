@@ -31,6 +31,8 @@ const directories = new Set([
   'credentials',
   'assistant',
   'backups',
+  'pack-archives',
+  'pack-progress',
   'diagnostics',
   'video-backups',
   'appearance',

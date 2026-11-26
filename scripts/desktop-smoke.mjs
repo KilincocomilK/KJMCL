@@ -275,7 +275,13 @@ try {
           if (!Boolean.getBoolean("kjmcl.smoke.fullscreen")) throw new AssertionError("JVM feature rule");
           System.out.print("KJMCL_JVM_OK\\nrefresh_token=secret_fixture\\n");
           System.gc();
-          if (Boolean.getBoolean("kjmcl.smoke.hold")) Thread.sleep(30000);
+          if (Boolean.getBoolean("kjmcl.smoke.hold")) {
+            while (!java.nio.file.Files.exists(java.nio.file.Path.of("fixture-load.flag"))) Thread.sleep(100);
+            System.out.println("[Render thread/INFO]: Setting user: KJMC_Tester");
+            while (!java.nio.file.Files.exists(java.nio.file.Path.of("fixture-join.flag"))) Thread.sleep(100);
+            System.out.println("[Server thread/INFO]: KJMC_Tester[local] logged in with entity id 1 at (1, 2, 3)");
+            Thread.sleep(30000);
+          }
         }
       }`,
     );
@@ -375,6 +381,10 @@ try {
       .toBeGreaterThan(0);
     const diagnosis = await second.evaluate((id) => window.kjmcl.sessions(id), id);
     expect(diagnosis[0].status).toBe('exited');
+    expect(diagnosis[0].milestone).toBe('java');
+    const lastPlayed = () => second.evaluate(async (id) =>
+      (await window.kjmcl.snapshot()).instances.find((i) => i.id === id).lastPlayed, id);
+    expect(await lastPlayed()).toBeUndefined();
     expect(diagnosis[0].memoryMb).toBeLessThanOrEqual(1024);
     expect(JSON.stringify(diagnosis)).not.toContain('secret_fixture');
     const gcFiles = await readdir(path.join(dir, 'logs'));
@@ -388,10 +398,17 @@ try {
     const startButton = second.getByRole('button', { name: '启动游戏', exact: true });
     const location = await startButton.boundingBox();
     await startButton.click();
-    await expect(second.getByRole('button', { name: '游戏运行中', exact: true })).toBeDisabled();
+    await expect(second.getByRole('button', { name: 'Java 已启动', exact: true })).toBeDisabled();
     // Keep the full interface for this legacy button regression. Automatic renderer release
     // and recovery are exercised separately by lightweight-desktop-smoke.mjs.
     await second.evaluate(() => window.kjmcl.setLightweight(false));
+    await writeFile(path.join(dir, 'fixture-load.flag'), '');
+    await expect(second.getByRole('button', { name: '游戏加载中', exact: true })).toBeDisabled();
+    expect(await lastPlayed()).toBeUndefined();
+    await writeFile(path.join(dir, 'fixture-join.flag'), '');
+    await expect(second.getByRole('button', { name: '已进入世界', exact: true })).toBeDisabled();
+    const joinedAt = await lastPlayed();
+    expect(joinedAt).toBeGreaterThan(0);
     await second.mouse.click(location.x + location.width / 2, location.y + location.height / 2);
     expect(await second.evaluate(async () => (await window.kjmcl.snapshot()).running.length)).toBe(
       1,
@@ -459,6 +476,10 @@ try {
     await third.waitForSelector('h1');
     const persisted = await third.evaluate((id) => window.kjmcl.sessions(id), id);
     expect(persisted[0].status).toBe('failed');
+    const failure = third.getByRole('region', { name: '上次启动失败' });
+    await expect(failure).toContainText('堆内存上限');
+    await expect(failure.getByRole('button', { name: '查看启动诊断' })).toBeVisible();
+    expect(await third.evaluate(async (id) => (await window.kjmcl.snapshot()).instances.find((i) => i.id === id).lastPlayed, id)).toBe(joinedAt);
     expect(persisted[1].status).toBe('stopped');
     expect(persisted[2].gc.pauses).toBeGreaterThan(0);
     console.log(
